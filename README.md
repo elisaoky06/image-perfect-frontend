@@ -1,4 +1,4 @@
-# Meddical Project
+# Medical Project
 
 A full-stack web application designed for medical appointment booking and doctor search. Built with React on the frontend and Express + MongoDB on the backend.
 
