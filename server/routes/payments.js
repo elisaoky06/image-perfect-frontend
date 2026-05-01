@@ -15,9 +15,113 @@ function appBaseUrl(req) {
     const u = envUrl.startsWith("http") ? envUrl : `https://${envUrl}`;
     return u.replace(/\/$/, "");
   }
-  // Fall back to the request's own host (works on Vercel & localhost)
   const proto = req.headers["x-forwarded-proto"] || req.protocol || "http";
   return `${proto}://${req.headers.host}`;
+}
+
+// ── Shared: send receipt to BOTH patient and doctor after payment ─────────────
+async function sendPaymentReceipts(paymentId, adminAccount) {
+  try {
+    // Populate appointment with full patient + doctor details
+    const payment = await Payment.findById(paymentId).lean();
+    if (!payment) return;
+
+    const appt = await Appointment.findById(payment.appointment)
+      .populate("patient", "firstName lastName email")
+      .populate("doctor", "firstName lastName email")
+      .lean();
+    if (!appt) return;
+
+    const patient = appt.patient;
+    const doctor = appt.doctor;
+    if (!patient || !doctor) return;
+
+    const transactionId = payment.transactionId || `TXN-${paymentId}`;
+    const amount = Number(payment.amount || 0).toFixed(2);
+    const receiptNo = `RCP-${paymentId.toString().slice(-8).toUpperCase()}`;
+    const apptDate = new Date(appt.startAt).toLocaleString("en-GH", {
+      weekday: "long", year: "numeric", month: "long",
+      day: "numeric", hour: "2-digit", minute: "2-digit",
+    });
+    const adminAccountLabel = adminAccount
+      ? `${adminAccount.label} — ${adminAccount.accountNumber} (${adminAccount.accountName})`
+      : appt.paymentDetails?.method || "Mobile Money";
+
+    // ── Patient receipt email ─────────────────────────────────────────────────
+    const patientHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#1a56db 0%,#0e9f6e 100%);padding:28px 32px;color:#fff;">
+          <h1 style="margin:0;font-size:22px;">💳 Payment Receipt</h1>
+          <p style="margin:6px 0 0;opacity:.85;font-size:14px;">Meddical Healthcare Platform</p>
+        </div>
+        <div style="padding:28px 32px;">
+          <p style="font-size:15px;">Hello <strong>${patient.firstName} ${patient.lastName}</strong>,</p>
+          <p style="font-size:15px;">Thank you! Your payment has been received. Your appointment is now <strong style="color:#1a56db;">pending admin approval</strong>. You will receive another email once it is confirmed.</p>
+
+          <table style="width:100%;border-collapse:collapse;margin:20px 0;font-size:14px;">
+            <tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Receipt No.</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;font-weight:600;">${receiptNo}</td></tr>
+            <tr><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Transaction ID</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">${transactionId}</td></tr>
+            <tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Amount Paid</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;color:#0e9f6e;font-weight:700;">GHS ${amount}</td></tr>
+            <tr><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Paid To</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">${adminAccountLabel}</td></tr>
+            <tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Doctor</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">Dr. ${doctor.firstName} ${doctor.lastName}</td></tr>
+            <tr><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Appointment Date</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">${apptDate}</td></tr>
+            <tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Consultation Type</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">${appt.consultationType || "In-Person"}</td></tr>
+            <tr><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Status</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;"><span style="background:#fef9c3;color:#854d0e;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;">PENDING ADMIN APPROVAL</span></td></tr>
+          </table>
+
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;margin-top:8px;">
+            <p style="margin:0;font-size:14px;color:#166534;">🩺 Once approved by the administrator, you will receive a confirmation email with full appointment details.</p>
+          </div>
+          <p style="margin-top:24px;font-size:13px;color:#64748b;">Thank you for choosing Meddical. We look forward to caring for you.</p>
+        </div>
+      </div>`;
+
+    // ── Doctor notification email ──────────────────────────────────────────────
+    const doctorHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#1a56db 0%,#7c3aed 100%);padding:28px 32px;color:#fff;">
+          <h1 style="margin:0;font-size:22px;">🗓️ New Appointment Payment Received</h1>
+          <p style="margin:6px 0 0;opacity:.85;font-size:14px;">Meddical Healthcare Platform</p>
+        </div>
+        <div style="padding:28px 32px;">
+          <p style="font-size:15px;">Hello <strong>Dr. ${doctor.firstName} ${doctor.lastName}</strong>,</p>
+          <p style="font-size:15px;">A patient has paid for an appointment with you and it is now <strong>pending admin approval</strong>. You will receive another notification once the admin confirms.</p>
+
+          <table style="width:100%;border-collapse:collapse;margin:20px 0;font-size:14px;">
+            <tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Patient</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">${patient.firstName} ${patient.lastName}</td></tr>
+            <tr><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Appointment Date</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">${apptDate}</td></tr>
+            <tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Consultation Type</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">${appt.consultationType || "In-Person"}</td></tr>
+            <tr><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Amount Paid</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;color:#0e9f6e;font-weight:700;">GHS ${amount}</td></tr>
+            <tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Reason</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">${appt.reason || "Not provided"}</td></tr>
+            <tr><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Payment Status</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;"><span style="background:#dcfce7;color:#166534;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;">✅ PAID</span></td></tr>
+          </table>
+
+          <p style="font-size:14px;color:#475569;">Please log in to your dashboard to view the appointment. It will become active once approved by the administrator.</p>
+        </div>
+      </div>`;
+
+    // Send both emails concurrently — failures are silently logged, not thrown
+    const [patRes, docRes] = await Promise.allSettled([
+      sendMockEmail(patient.email, `Meddical – Payment Receipt (${receiptNo})`, patientHtml),
+      sendMockEmail(doctor.email, "Meddical – Patient Payment Received", doctorHtml),
+    ]);
+
+    // Log preview URLs if using Ethereal test account
+    if (patRes.status === "fulfilled" && patRes.value?.previewUrl) {
+      console.log(`[payments] Patient receipt preview: ${patRes.value.previewUrl}`);
+    }
+    if (docRes.status === "fulfilled" && docRes.value?.previewUrl) {
+      console.log(`[payments] Doctor notification preview: ${docRes.value.previewUrl}`);
+    }
+
+    return {
+      patientPreviewUrl: patRes.status === "fulfilled" ? patRes.value?.previewUrl : null,
+      doctorPreviewUrl: docRes.status === "fulfilled" ? docRes.value?.previewUrl : null,
+    };
+  } catch (err) {
+    console.error("[payments] sendPaymentReceipts error:", err?.message);
+    return null;
+  }
 }
 
 // ── Public: list active admin payment receiving accounts ──────────────────────
@@ -33,7 +137,7 @@ router.get("/admin-accounts", async (req, res) => {
   }
 });
 
-// ── Initiate payment (Paystack simulation) ────────────────────────────────────
+// ── Initiate payment ──────────────────────────────────────────────────────────
 router.post("/initiate", requireAuth("patient"), async (req, res) => {
   try {
     const { appointmentId, method, amount, adminAccountId } = req.body || {};
@@ -51,7 +155,7 @@ router.post("/initiate", requireAuth("patient"), async (req, res) => {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
-    // Optionally look up the selected admin account
+    // Resolve selected admin payment account
     let adminAccount = null;
     if (adminAccountId && mongoose.isValidObjectId(adminAccountId)) {
       adminAccount = await AdminPaymentAccount.findById(adminAccountId).lean();
@@ -71,10 +175,9 @@ router.post("/initiate", requireAuth("patient"), async (req, res) => {
 
     // ── Paystack simulation (no real key configured) ──────────────────────────
     if (!paystackSecret || paystackSecret === "sk_test_simulation") {
-      // Generate a mock authorization URL that redirects to our verify page
       const base = appBaseUrl(req);
-      const mockRef = payment._id.toString();
-      // Mark as completed immediately (simulation)
+
+      // Mark payment as completed immediately
       payment.status = "completed";
       payment.transactionId = `MOCK_PAYSTACK_${Date.now()}`;
       await payment.save();
@@ -82,50 +185,24 @@ router.post("/initiate", requireAuth("patient"), async (req, res) => {
       // Update appointment payment status
       appointment.paymentStatus = "paid";
       appointment.isPaid = true;
-      if (adminAccount) {
-        appointment.paymentDetails = {
-          ...appointment.paymentDetails,
-          method: adminAccount.method,
-          transactionId: payment.transactionId,
-        };
-      }
+      appointment.paymentDetails = {
+        ...(appointment.paymentDetails || {}),
+        method: adminAccount?.method || appointment.paymentDetails?.method || "Mobile Money",
+        transactionId: payment.transactionId,
+      };
       await appointment.save();
 
-      // Send mock payment confirmation email
-      if (req.user?.email) {
-        const adminAccountLabel = adminAccount
-          ? `${adminAccount.label} (${adminAccount.accountNumber})`
-          : "Admin Account";
+      // ✅ Send receipt to BOTH patient and doctor
+      const receipts = await sendPaymentReceipts(payment._id, adminAccount);
 
-        const html = `
-          <div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
-            <div style="background:linear-gradient(135deg,#1a56db 0%,#0e9f6e 100%);padding:28px 32px;color:#fff;">
-              <h1 style="margin:0;font-size:22px;">💳 Payment Received</h1>
-              <p style="margin:6px 0 0;opacity:.85;font-size:14px;">Meddical Healthcare Platform</p>
-            </div>
-            <div style="padding:28px 32px;">
-              <p>Hello <strong>${req.user.firstName || req.user.email}</strong>,</p>
-              <p>Your payment of <strong>GHS ${Number(amount).toFixed(2)}</strong> has been received successfully.</p>
-              <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
-                <tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Transaction ID</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;font-weight:600;">${payment.transactionId}</td></tr>
-                <tr><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Amount</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;color:#0e9f6e;font-weight:600;">GHS ${Number(amount).toFixed(2)}</td></tr>
-                <tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Payment Method</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">${method}</td></tr>
-                <tr><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Paid To</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">${adminAccountLabel}</td></tr>
-              </table>
-              <p style="font-size:13px;color:#64748b;">Your appointment is now pending admin approval. You will receive a confirmation email once approved.</p>
-            </div>
-          </div>`;
-
-        await sendMockEmail(req.user.email, "Meddical – Payment Received", html).catch(() => {});
-      }
-
-      // Redirect to verify page with mock reference
-      const verifyUrl = `${base}/payment/verify?reference=${mockRef}&simulated=1`;
+      const verifyUrl = `${base}/payment/verify?reference=${payment._id.toString()}&simulated=1`;
       return res.json({
         paymentId: payment._id,
         message: "Payment simulated successfully",
         authorizationUrl: verifyUrl,
         simulated: true,
+        patientReceiptPreview: receipts?.patientPreviewUrl || null,
+        doctorNotificationPreview: receipts?.doctorPreviewUrl || null,
       });
     }
 
@@ -139,7 +216,7 @@ router.post("/initiate", requireAuth("patient"), async (req, res) => {
       },
       body: JSON.stringify({
         email: req.user.email,
-        amount: Math.round(amount * 100), // Paystack expects pesewas
+        amount: Math.round(Number(amount) * 100), // Paystack expects pesewas
         reference: payment._id.toString(),
         callback_url: `${base}/payment/verify`,
         metadata: {
@@ -167,7 +244,7 @@ router.post("/initiate", requireAuth("patient"), async (req, res) => {
   }
 });
 
-// ── Verify payment after redirect ─────────────────────────────────────────────
+// ── Verify payment after Paystack redirect ────────────────────────────────────
 router.get("/verify/:reference", requireAuth("patient"), async (req, res) => {
   try {
     const { reference } = req.params;
@@ -178,18 +255,22 @@ router.get("/verify/:reference", requireAuth("patient"), async (req, res) => {
     if (!payment) return res.status(404).json({ error: "Payment not found" });
 
     if (payment.status === "completed") {
+      // Already processed — just return success (receipts were already sent)
       return res.json({ success: true, message: "Payment already verified", payment });
     }
 
     const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
+
+    // Simulation path
     if (!paystackSecret || paystackSecret === "sk_test_simulation") {
-      // Simulation: just mark as complete
       payment.status = "completed";
       payment.transactionId = payment.transactionId || `MOCK_${Date.now()}`;
       await payment.save();
       await Appointment.findByIdAndUpdate(payment.appointment, {
         paymentStatus: "paid", isPaid: true,
       });
+      // Send receipts (in case initiate didn't already — e.g. if verify is called standalone)
+      await sendPaymentReceipts(payment._id, null);
       return res.json({ success: true, payment });
     }
 
@@ -205,9 +286,17 @@ router.get("/verify/:reference", requireAuth("patient"), async (req, res) => {
       payment.transactionId = paystackData.data.id.toString();
       payment.rawResponse = paystackData.data;
       await payment.save();
+
       await Appointment.findByIdAndUpdate(payment.appointment, {
         paymentStatus: "paid", isPaid: true,
       });
+
+      // ✅ Send receipt to BOTH patient and doctor after real Paystack success
+      const adminAccount = payment.adminAccount
+        ? await AdminPaymentAccount.findById(payment.adminAccount).lean()
+        : null;
+      await sendPaymentReceipts(payment._id, adminAccount);
+
       return res.json({ success: true, payment });
     }
 
@@ -236,6 +325,11 @@ router.post("/webhook", async (req, res) => {
           await Appointment.findByIdAndUpdate(payment.appointment, {
             paymentStatus: "paid", isPaid: true,
           });
+          // ✅ Send receipts via webhook too
+          const adminAccount = payment.adminAccount
+            ? await AdminPaymentAccount.findById(payment.adminAccount).lean()
+            : null;
+          await sendPaymentReceipts(payment._id, adminAccount);
         }
       }
     }
