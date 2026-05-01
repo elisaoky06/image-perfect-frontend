@@ -60,7 +60,7 @@ router.post("/", requireAuth("patient"), async (req, res) => {
       startAt,
       endAt,
       reason: reason ? String(reason).trim() : "",
-      status: "scheduled",
+      status: "pending",
       isPaid: true,
       amount: Number(amount) || doctor.doctorProfile?.consultationFee || 0,
       consultationType: String(consultationType || "In-Person").trim(),
@@ -82,47 +82,7 @@ router.post("/", requireAuth("patient"), async (req, res) => {
       .populate("patient", "firstName lastName email phone")
       .lean();
       
-    // Send Mock Email
-    const apptDate = startAt.toLocaleString();
-    const paymentDate = new Date().toLocaleString();
-    const emailHtml = `
-      <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #2b6cb0;">Meddical - Billing Receipt & Booking Confirmation</h2>
-        <p>Hello <strong>${populated.patient.firstName}</strong>,</p>
-        <p>Your payment was successful and your appointment is officially confirmed!</p>
-        <table style="width: 100%; text-align: left; margin-top: 20px; border-collapse: collapse;">
-          <tr style="background-color: #f7fafc;"><th style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Patient Name</th><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${populated.patient.firstName} ${populated.patient.lastName}</td></tr>
-          <tr><th style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Doctor Name</th><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Dr. ${populated.doctor.firstName} ${populated.doctor.lastName}</td></tr>
-          <tr style="background-color: #f7fafc;"><th style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Appointment Date & Time</th><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${apptDate}</td></tr>
-          <tr><th style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Consultation Type</th><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${populated.consultationType}</td></tr>
-          <tr style="background-color: #f7fafc;"><th style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Amount Paid</th><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">GHS ${populated.amount}</td></tr>
-          <tr><th style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Payment Method</th><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${paymentDetails.method || "Mobile Money"}</td></tr>
-          <tr style="background-color: #f7fafc;"><th style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Transaction ID</th><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${transactionId}</td></tr>
-          <tr><th style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Payment Date</th><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${paymentDate}</td></tr>
-        </table>
-        <p style="margin-top: 20px;">Thank you for trusting us with your healthcare needs.</p>
-      </div>
-    `;
-
-    const patientEmailRes = await sendMockEmail(paymentDetails.email, "Billing Receipt & Booking Confirmation", emailHtml);
-
-    // Send mock email to Doctor
-    const docEmailHtml = `
-      <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
-        <h2 style="color: #2b6cb0;">New Appointment Scheduled</h2>
-        <p>Hello Dr. <strong>${populated.doctor.firstName}</strong>,</p>
-        <p>A new appointment has been scheduled and paid for by ${populated.patient.firstName} ${populated.patient.lastName}.</p>
-        <ul>
-          <li><strong>Scheduled Time:</strong> ${apptDate}</li>
-          <li><strong>Reason:</strong> ${reason || "None provided"}</li>
-          <li><strong>Payment Confirmation:</strong> Successful</li>
-        </ul>
-        <p>Please login to your dashboard to manage this appointment.</p>
-      </div>
-    `;
-    await sendMockEmail(populated.doctor.email, "New Appointment Scheduled", docEmailHtml);
-
-    return res.status(201).json({ appointment: populated, previewUrl: patientEmailRes?.previewUrl });
+    return res.status(201).json({ appointment: populated });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: "Could not book appointment" });

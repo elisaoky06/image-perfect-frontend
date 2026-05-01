@@ -10,6 +10,7 @@ import doctorRoutes from "./routes/doctors.js";
 import appointmentsRouter from "./routes/appointments.js";
 import contactRouter from "./routes/contact.js";
 import testimonialsRouter from "./routes/testimonials.js";
+import adminRouter from "./routes/admin.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(__dirname, "..");
@@ -111,6 +112,7 @@ app.use("/api/doctors", doctorRoutes);
 app.use("/api/appointments", appointmentsRouter);
 app.use("/api/contact", contactRouter);
 app.use("/api/testimonials", testimonialsRouter);
+app.use("/api/admin", adminRouter);
 
 app.get("/api/health", (_req, res) => {
   const ready = mongoose.connection.readyState === 1;

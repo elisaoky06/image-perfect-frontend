@@ -32,6 +32,7 @@ export const sendMockEmail = async (to, subject, html) => {
       to,
       subject,
       html,
+    });
     let previewUrl = null;
     if (!process.env.EMAIL_USER) {
       previewUrl = nodemailer.getTestMessageUrl(info);

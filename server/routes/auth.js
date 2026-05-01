@@ -96,6 +96,7 @@ router.post("/register", (req, res, next) => {
       role,
       specialty,
       bio,
+      registrationKey,
     } = req.body || {};
 
     // #region agent log
@@ -116,9 +117,17 @@ router.post("/register", (req, res, next) => {
       cleanupUploads();
       return res.status(400).json({ error: "Missing required fields" });
     }
-    if (!["patient", "doctor"].includes(role)) {
+    if (!["patient", "doctor", "admin"].includes(role)) {
       cleanupUploads();
       return res.status(400).json({ error: "Invalid role" });
+    }
+    if (role === "doctor" && registrationKey !== "5678") {
+      cleanupUploads();
+      return res.status(400).json({ error: "Invalid registration key for doctor" });
+    }
+    if (role === "admin" && registrationKey !== "1234") {
+      cleanupUploads();
+      return res.status(400).json({ error: "Invalid registration key for admin" });
     }
     if (password.length < 8) {
       cleanupUploads();
@@ -210,7 +219,6 @@ router.post("/register", (req, res, next) => {
     const user = await User.create(doc);
     uploadedPaths = [];
 
-    const token = signToken(user);
     let safeUser;
     try {
       safeUser = typeof user.toPublicJSON === "function" ? user.toPublicJSON() : user;
@@ -225,7 +233,7 @@ router.post("/register", (req, res, next) => {
         phone: user.phone,
       };
     }
-    return res.status(201).json({ token, user: safeUser });
+    return res.status(201).json({ user: safeUser, message: "Registration successful. Please log in." });
   } catch (e) {
     cleanupUploads();
     console.error("register error:", e?.name, e?.message);
