@@ -109,15 +109,10 @@ app.use((req, res, next) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/doctors", doctorRoutes);
-<<<<<<< HEAD
-app.use("/api/appointments", appointmentRoutes);
-app.use("/api/payments", paymentRoutes);
-=======
 app.use("/api/appointments", appointmentsRouter);
 app.use("/api/contact", contactRouter);
 app.use("/api/testimonials", testimonialsRouter);
 app.use("/api/admin", adminRouter);
->>>>>>> 603410446f9f270a2783c7c9d0c0e7f1854ef592
 
 app.get("/api/health", (_req, res) => {
   const ready = mongoose.connection.readyState === 1;
