@@ -3,18 +3,27 @@ import path from "path";
 import { Router } from "express";
 import mongoose from "mongoose";
 import { Appointment } from "../models/Appointment.js";
+import { Slot } from "../models/Slot.js";
 import { User } from "../models/User.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { dateKeyLocal } from "../utils/slots.js";
 import { MEDICAL_UPLOAD_DIR } from "../middleware/medicalUpload.js";
+import { sendMockEmail } from "../utils/email.js";
 
 const router = Router();
 
 router.post("/", requireAuth("patient"), async (req, res) => {
   try {
-    const { doctorId, start, end, reason } = req.body || {};
+    const { doctorId, start, end, reason, paymentDetails, amount, consultationType } = req.body || {};
     if (!doctorId || !start || !end) {
       return res.status(400).json({ error: "doctorId, start, and end are required" });
     }
+    
+    // Validate payment details
+    if (!paymentDetails || !paymentDetails.phone || !paymentDetails.pin || !paymentDetails.email || !paymentDetails.country) {
+      return res.status(400).json({ error: "Complete payment details (country, phone, pin, email) are required." });
+    }
+
     if (!mongoose.isValidObjectId(doctorId)) {
       return res.status(400).json({ error: "Invalid doctor id" });
     }
@@ -27,15 +36,24 @@ router.post("/", requireAuth("patient"), async (req, res) => {
     if (Number.isNaN(+startAt) || Number.isNaN(+endAt) || endAt <= startAt) {
       return res.status(400).json({ error: "Invalid appointment times" });
     }
-    const clash = await Appointment.findOne({
+    const hStr = String(startAt.getHours()).padStart(2, '0');
+    const mStr = String(startAt.getMinutes()).padStart(2, '0');
+    const startTimeStr = `${hStr}:${mStr}`;
+    const dateStr = dateKeyLocal(startAt);
+
+    const slot = await Slot.findOne({
       doctor: doctor._id,
-      status: { $in: ["pending", "scheduled"] },
-      startAt: { $lt: endAt },
-      endAt: { $gt: startAt },
+      date: dateStr,
+      startTime: startTimeStr,
+      isBooked: false
     });
-    if (clash) {
-      return res.status(409).json({ error: "This time slot was just booked. Please choose another." });
+
+    if (!slot) {
+      return res.status(409).json({ error: "This time slot is no longer available. Please choose another." });
     }
+    
+    // Create appointment and mark as scheduled & paid
+    const transactionId = "MOCK_TXN_" + Date.now();
     const appt = await Appointment.create({
       patient: req.user._id,
       doctor: doctor._id,
@@ -43,11 +61,27 @@ router.post("/", requireAuth("patient"), async (req, res) => {
       endAt,
       reason: reason ? String(reason).trim() : "",
       status: "pending",
+      isPaid: true,
+      amount: Number(amount) || doctor.doctorProfile?.consultationFee || 0,
+      consultationType: String(consultationType || "In-Person").trim(),
+      paymentDetails: {
+        method: paymentDetails.method || "Mobile Money",
+        country: paymentDetails.country,
+        phone: paymentDetails.phone,
+        email: paymentDetails.email,
+        transactionId: transactionId
+      }
     });
+
+    slot.isBooked = true;
+    slot.appointment = appt._id;
+    await slot.save();
+
     const populated = await Appointment.findById(appt._id)
       .populate("doctor", "firstName lastName email phone doctorProfile")
       .populate("patient", "firstName lastName email phone")
       .lean();
+      
     return res.status(201).json({ appointment: populated });
   } catch (e) {
     console.error(e);
@@ -95,6 +129,32 @@ router.patch("/:id/confirm", requireAuth("doctor"), async (req, res) => {
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: "Failed to confirm" });
+  }
+});
+
+router.patch("/:id/complete", requireAuth("doctor"), async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+    const appt = await Appointment.findById(id);
+    if (!appt) {
+      return res.status(404).json({ error: "Appointment not found" });
+    }
+    if (!appt.doctor.equals(req.user._id)) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+    // Only allow completing scheduled appointments
+    if (appt.status !== "scheduled") {
+      return res.status(400).json({ error: "Only scheduled appointments can be completed" });
+    }
+    appt.status = "completed";
+    await appt.save();
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "Failed to complete" });
   }
 });
 

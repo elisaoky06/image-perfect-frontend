@@ -1,4 +1,5 @@
 import { Heart, Brain, Eye, Stethoscope, Bone, Baby } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const services = [
   { icon: Heart, title: "Cardiology", description: "Expert heart care with advanced diagnostic and treatment options for all cardiovascular conditions." },
@@ -20,16 +21,17 @@ const ServicesSection = () => {
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
           {services.map((service) => (
-            <div
+            <Link
+              to={`/services/${service.title.toLowerCase().replace(" ", "-")}`}
               key={service.title}
-              className="group bg-card border border-border rounded-xl p-8 hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+              className="group bg-card border border-border rounded-xl p-8 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 block text-left"
             >
               <div className="w-14 h-14 rounded-lg bg-sky-light flex items-center justify-center mb-5 group-hover:bg-accent group-hover:text-accent-foreground transition-colors">
                 <service.icon className="h-7 w-7 text-accent group-hover:text-accent-foreground transition-colors" />
               </div>
               <h3 className="font-heading text-xl text-foreground mb-3">{service.title}</h3>
               <p className="text-muted-foreground text-sm leading-relaxed">{service.description}</p>
-            </div>
+            </Link>
           ))}
         </div>
       </div>

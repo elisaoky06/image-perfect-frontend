@@ -12,7 +12,8 @@ const Register = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
 
-  const [role, setRole] = useState<"patient" | "doctor">("patient");
+  const [role, setRole] = useState<"patient" | "doctor" | "admin">("patient");
+  const [registrationKey, setRegistrationKey] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -64,6 +65,9 @@ const Register = () => {
       fd.append("lastName", lastName.trim());
       fd.append("phone", phone.trim());
       fd.append("role", role);
+      if (role === "doctor" || role === "admin") {
+        fd.append("registrationKey", registrationKey.trim());
+      }
 
       if (role === "doctor") {
         fd.append("specialty", specialty.trim());
@@ -71,13 +75,13 @@ const Register = () => {
         if (profilePicture) {
           fd.append("profilePicture", profilePicture);
         }
-      } else if (medicalHistoryPdf) {
+      } else if (role === "patient" && medicalHistoryPdf) {
         fd.append("medicalHistoryPdf", medicalHistoryPdf);
       }
 
       await register(fd);
-      toast.success("Account created");
-      navigate(role === "doctor" ? "/doctor" : "/appointments", { replace: true });
+      toast.success("Account created. Please sign in.");
+      navigate("/login", { replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -103,13 +107,14 @@ const Register = () => {
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     value={role}
                     onChange={(e) => {
-                      setRole(e.target.value as "patient" | "doctor");
+                      setRole(e.target.value as "patient" | "doctor" | "admin");
                       setMedicalHistoryPdf(null);
                       setProfilePicture(null);
                     }}
                   >
                     <option value="patient">Patient</option>
                     <option value="doctor">Doctor</option>
+                    <option value="admin">Administrator</option>
                   </select>
                   <p className="text-xs text-muted-foreground">
                     {role === "patient"
@@ -166,6 +171,12 @@ const Register = () => {
                   <Label htmlFor="phone">Phone</Label>
                   <Input id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
                 </div>
+                {(role === "doctor" || role === "admin") && (
+                  <div className="space-y-2">
+                    <Label htmlFor="registrationKey">Registration Key</Label>
+                    <Input id="registrationKey" type="password" value={registrationKey} onChange={(e) => setRegistrationKey(e.target.value)} required />
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="password">Password (min 8 characters)</Label>
                   <Input

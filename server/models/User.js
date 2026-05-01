@@ -1,21 +1,5 @@
 import mongoose from "mongoose";
 
-const segmentSchema = new mongoose.Schema(
-  {
-    start: { type: String, required: true },
-    end: { type: String, required: true },
-  },
-  { _id: false },
-);
-
-const weeklyDaySchema = new mongoose.Schema(
-  {
-    day: { type: Number, required: true, min: 0, max: 6 },
-    segments: { type: [segmentSchema], default: [] },
-  },
-  { _id: false },
-);
-
 const doctorProfileSchema = new mongoose.Schema(
   {
     profilePicture: {
@@ -28,7 +12,14 @@ const doctorProfileSchema = new mongoose.Schema(
       default: "General Medicine"
     },
     bio: { type: String, default: "" },
-    weeklyAvailability: { type: [weeklyDaySchema], default: [] },
+    qualification: { type: String, default: "" },
+    yearsOfExperience: { type: Number, default: 0 },
+    licenseNumber: { type: String, default: "", unique: true, sparse: true },
+    languagesSpoken: { type: [String], default: [] },
+    consultationFee: { type: Number, default: 0 },
+    hospitalBranch: { type: String, default: "" },
+    rating: { type: Number, default: 0 },
+    monthlyAvailability: { type: [mongoose.Schema.Types.Mixed], default: [] },
   },
   { _id: false },
 );
@@ -48,7 +39,7 @@ const userSchema = new mongoose.Schema(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
-    role: { type: String, enum: ["patient", "doctor"], required: true },
+    role: { type: String, enum: ["patient", "doctor", "admin"], required: true },
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
     phone: { type: String, default: "", trim: true },

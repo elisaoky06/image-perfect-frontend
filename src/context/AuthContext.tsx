@@ -151,12 +151,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         : text || res.statusText || "Registration failed";
       throw new Error(msg);
     }
-    if (!data?.token || !data?.user) {
+    if (!data?.user) {
       throw new Error("Invalid response from server");
     }
-    localStorage.setItem("token", data.token);
-    setToken(data.token);
-    setUser(data.user);
+    // Do not log the user in automatically after registration.
   }, []);
 
   const logout = useCallback(() => {

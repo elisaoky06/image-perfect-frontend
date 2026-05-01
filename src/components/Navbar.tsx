@@ -12,11 +12,6 @@ const Navbar = () => {
 
   const navLinks = [
     { label: "Home", to: "/#home" },
-    { label: "Services", to: "/#services" },
-    { label: "About", to: "/#about" },
-    { label: "Doctors", to: "/#doctors" },
-    { label: "News", to: "/#news" },
-    { label: "Contact", to: "/#contact" },
   ];
 
   return (
@@ -27,15 +22,10 @@ const Navbar = () => {
         </Link>
 
         {/* Desktop Nav */}
-        <div className="hidden lg:flex items-center gap-8 flex-1 justify-center max-w-3xl">
-          {navLinks.map((link) => (
-            <Link key={link.label} to={link.to} className={linkClass}>
-              {link.label}
-            </Link>
-          ))}
-        </div>
-
-        <div className="hidden lg:flex items-center gap-4 shrink-0">
+        <div className="hidden lg:flex items-center gap-8 flex-1 justify-end">
+          <Link to="/#home" className={linkClass}>
+            Home
+          </Link>
           <Link to="/appointments" className={linkClass}>
             Appointments
           </Link>
@@ -49,7 +39,7 @@ const Navbar = () => {
               <Link to="/login" className={linkClass}>
                 Sign in
               </Link>
-              <Link to="/register" className={`${linkClass} text-primary-foreground`}>
+              <Link to="/register" className={linkClass}>
                 Register
               </Link>
             </>
@@ -63,8 +53,10 @@ const Navbar = () => {
               Log out ({user.firstName})
             </button>
           )}
-          <Phone className="h-4 w-4 text-accent" />
-          <span className="text-primary-foreground text-sm font-medium">Emergency: (237) 681-812-255</span>
+          <div className="flex items-center gap-2 pl-4 border-l border-primary-foreground/20">
+            <Phone className="h-4 w-4 text-accent" />
+            <span className="text-primary-foreground text-sm font-medium">Emergency: (237) 681-812-255</span>
+          </div>
         </div>
 
         {/* Mobile menu button */}

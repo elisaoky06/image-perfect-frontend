@@ -36,39 +36,33 @@ export function localDateAtMinutes(dateKeyStr, minutesFromMidnight) {
 }
 
 /**
- * @param {Array<{day:number, segments:{start:string,end:string}[]}>} weekly
+ * @param {Array<{date:string, segments:{start:string,end:string}[]}>} monthlyAvailability
  * @param {Date[]} appointments doctor appointments start/end as Date
  * @param {string} fromKey YYYY-MM-DD
  * @param {number} numDays
  * @param {number} slotMinutes
  */
-export function generateAvailableSlots(weekly, busyIntervals, fromKey, numDays, slotMinutes = 30) {
-  if (!weekly?.length) return [];
-
-  const weeklyMap = new Map(weekly.map((w) => [w.day, w.segments || []]));
+export function generateAvailableSlots(monthlyAvailability, busyIntervals, fromKey, numDays, slotMinutes = 30) {
+  if (!monthlyAvailability?.length) return [];
   const now = new Date();
   const slots = [];
+  const fromDate = new Date(fromKey + "T00:00:00");
+  const endDate = addDays(fromDate, numDays);
 
-  let cursor = new Date(fromKey + "T00:00:00");
-  for (let i = 0; i < numDays; i++) {
-    const dayDate = addDays(cursor, i);
-    const key = dateKeyLocal(dayDate);
-    const weekday = dayDate.getDay();
-    const segments = weeklyMap.get(weekday);
-    if (!segments?.length) continue;
-
-    for (const seg of segments) {
+  for (const row of monthlyAvailability) {
+    const rowDate = new Date(row.date + "T00:00:00");
+    if (rowDate < startOfDay(now) || rowDate > endDate) continue;
+    
+    for (const seg of row.segments) {
       let cur = parseHM(seg.start);
       const end = parseHM(seg.end);
       if (Number.isNaN(cur) || Number.isNaN(end) || cur >= end) continue;
 
       while (cur + slotMinutes <= end) {
-        const start = localDateAtMinutes(key, cur);
-        const endAt = localDateAtMinutes(key, cur + slotMinutes);
+        const start = localDateAtMinutes(row.date, cur);
+        const endAt = localDateAtMinutes(row.date, cur + slotMinutes);
         if (endAt > start) {
-          const overlaps = busyIntervals.some(
-            (b) => b.startAt < endAt && b.endAt > start,
-          );
+          const overlaps = busyIntervals.some((b) => b.startAt < endAt && b.endAt > start);
           if (!overlaps && start >= now) {
             slots.push({ start, end: endAt });
           }
@@ -77,6 +71,5 @@ export function generateAvailableSlots(weekly, busyIntervals, fromKey, numDays, 
       }
     }
   }
-
   return slots.sort((a, b) => a.start - b.start);
 }
