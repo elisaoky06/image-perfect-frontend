@@ -146,6 +146,10 @@ process.on("unhandledRejection", (reason) => {
   console.error("unhandledRejection:", reason);
 });
 
-app.listen(PORT, () => {
-  console.log(`API listening on http://localhost:${PORT}`);
-});
+if (process.env.NODE_ENV !== "production") {
+  app.listen(PORT, () => {
+    console.log(`API listening on http://localhost:${PORT}`);
+  });
+}
+
+export default app;
