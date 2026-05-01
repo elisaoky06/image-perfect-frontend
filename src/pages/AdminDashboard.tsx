@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
@@ -84,7 +84,6 @@ function StatCard({ icon: Icon, label, value, color }: { icon: React.ElementType
 export default function AdminDashboard() {
   const { user, logout, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false); // local loading for dashboard data
 
   const [tab, setTab] = useState<"appointments" | "doctors" | "patients" | "payments">("appointments");
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -94,13 +93,6 @@ export default function AdminDashboard() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [expandedDoctor, setExpandedDoctor] = useState<string | null>(null);
   const [expandedAppt, setExpandedAppt] = useState<string | null>(null);
-
-  // Guard: only admins — but wait for auth to finish loading first
-  useEffect(() => {
-    if (authLoading) return; // still resolving token, don't redirect yet
-    if (!user) { navigate("/login", { replace: true }); return; }
-    if (user.role !== "admin") { navigate("/", { replace: true }); return; }
-  }, [user, navigate, authLoading]);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -114,13 +106,19 @@ export default function AdminDashboard() {
       if (docData.status === "fulfilled") setDoctors(docData.value.doctors);
       if (statsData.status === "fulfilled") setStats(statsData.value);
     } catch {
-      toast.error("Failed to load dashboard data");
+      /* silently ignore poll errors */
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { void fetchAll(); }, [fetchAll]);
+  // Initial fetch + auto-refresh every 30 seconds so new payments appear without manual refresh
+  useEffect(() => {
+    if (authLoading || !user || user.role !== "admin") return;
+    void fetchAll();
+    const interval = setInterval(() => { void fetchAll(); }, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchAll, authLoading, user]);
 
   async function handleApprove(id: string) {
     setBusyId(id);
@@ -156,6 +154,7 @@ export default function AdminDashboard() {
   const scheduled = appointments.filter((a) => a.status === "scheduled");
   const allOther = appointments.filter((a) => !["pending", "scheduled"].includes(a.status));
 
+  // ── Auth guards (render-time — safe on refresh) ───────────────────────────
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -166,8 +165,8 @@ export default function AdminDashboard() {
       </div>
     );
   }
-
-  if (!user || user.role !== "admin") return null;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== "admin") return <Navigate to="/" replace />;
 
   return (
     <div className="min-h-screen bg-gray-50">

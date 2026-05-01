@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { SiteLayout } from "@/components/SiteLayout";
 import { Button } from "@/components/ui/button";
