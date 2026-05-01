@@ -50,6 +50,19 @@ type AdminPaymentAccount = {
   isActive: boolean;
 };
 
+type PaymentTransaction = {
+  _id: string;
+  patient: { _id: string; firstName: string; lastName: string; email: string };
+  appointment: { _id: string; startAt: string; status: string; consultationType: string; reason: string; doctor: { firstName: string; lastName: string } };
+  amount: number;
+  currency: string;
+  method: string;
+  status: "pending" | "completed" | "failed";
+  transactionId: string;
+  createdAt: string;
+  adminAccount?: { label: string; method: string; bankName?: string; network?: string; accountNumber: string };
+};
+
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
   scheduled: "bg-green-100 text-green-800 border-green-200",
@@ -85,7 +98,7 @@ export default function AdminDashboard() {
   const { user, logout, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  const [tab, setTab] = useState<"appointments" | "doctors" | "patients" | "payments">("appointments");
+  const [tab, setTab] = useState<"appointments" | "doctors" | "patients" | "transactions" | "payments">("appointments");
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -215,6 +228,7 @@ export default function AdminDashboard() {
             { key: "appointments", label: "Appointments", icon: Calendar },
             { key: "doctors", label: "Doctors & Availability", icon: Stethoscope },
             { key: "patients", label: "Patient Records", icon: Users },
+            { key: "transactions", label: "Transactions", icon: DollarSign },
             { key: "payments", label: "Payment Accounts", icon: CreditCard },
           ] as const).map(({ key, label, icon: Icon }) => (
             <button
@@ -269,7 +283,7 @@ export default function AdminDashboard() {
                     <AppointmentCard key={a._id} appt={a} busyId={busyId}
                       expanded={expandedAppt === a._id}
                       onToggle={() => setExpandedAppt(expandedAppt === a._id ? null : a._id)}
-                      onApprove={handleApprove} onReject={handleReject} />
+                      onApprove={handleApprove} onReject={handleReject} showActions />
                   ))}
                 </div>
               </section>
@@ -373,6 +387,11 @@ export default function AdminDashboard() {
         )}
 
         {/* ══════════════════════════════════════════════════════════════════
+            TAB: TRANSACTIONS (ALL PAYMENTS)
+        ══════════════════════════════════════════════════════════════════ */}
+        {tab === "transactions" && <TransactionsTab />}
+
+        {/* ══════════════════════════════════════════════════════════════════
             TAB: PAYMENT ACCOUNTS
         ══════════════════════════════════════════════════════════════════ */}
         {tab === "payments" && <PaymentAccountsTab />}
@@ -435,7 +454,7 @@ function AppointmentCard({
             {appt.paymentDetails?.method && <Field label="Payment method" value={appt.paymentDetails.method} />}
             {appt.paymentDetails?.transactionId && <Field label="Transaction ID" value={appt.paymentDetails.transactionId} />}
           </div>
-          {(showActions || appt.status === "pending") && appt.status === "pending" && (
+          {(showActions || appt.status === "pending") && (appt.status === "pending" || appt.status === "scheduled") && (
             <div className="flex gap-3 pt-2">
               <Button
                 size="sm"
@@ -720,6 +739,68 @@ function PaymentAccountsTab() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Transactions Tab ────────────────────────────────────────────────────────
+function TransactionsTab() {
+  const [payments, setPayments] = useState<PaymentTransaction[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api<{ payments: PaymentTransaction[] }>("/api/admin/payments")
+      .then(r => setPayments(r.payments || []))
+      .catch(() => toast.error("Failed to load transactions"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="py-12 text-center text-gray-400">Loading transactions…</div>;
+  if (payments.length === 0) return <EmptyState icon={DollarSign} message="No payment transactions found." />;
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-bold text-gray-900">Payment Transactions ({payments.length})</h2>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm whitespace-nowrap">
+            <thead className="bg-gray-50 text-gray-500 uppercase text-xs tracking-wider border-b border-gray-100">
+              <tr>
+                <th className="px-5 py-3 font-medium">Date</th>
+                <th className="px-5 py-3 font-medium">Patient</th>
+                <th className="px-5 py-3 font-medium">Amount</th>
+                <th className="px-5 py-3 font-medium">Method</th>
+                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium">Transaction ID</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-gray-700">
+              {payments.map(p => (
+                <tr key={p._id} className="hover:bg-gray-50">
+                  <td className="px-5 py-3">{fmtDate(p.createdAt)}</td>
+                  <td className="px-5 py-3 font-medium text-gray-900">{p.patient?.firstName} {p.patient?.lastName}</td>
+                  <td className="px-5 py-3 font-bold text-emerald-600">GHS {Number(p.amount || 0).toFixed(2)}</td>
+                  <td className="px-5 py-3">
+                    {p.method}
+                    {p.adminAccount ? ` (${p.adminAccount.label})` : ""}
+                  </td>
+                  <td className="px-5 py-3">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      p.status === "completed" ? "bg-green-100 text-green-800" :
+                      p.status === "pending" ? "bg-yellow-100 text-yellow-800" :
+                      "bg-red-100 text-red-800"
+                    }`}>
+                      {p.status.toUpperCase()}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3 text-xs font-mono text-gray-500">{p.transactionId || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

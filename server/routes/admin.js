@@ -4,6 +4,8 @@ import { Appointment } from "../models/Appointment.js";
 import { Slot } from "../models/Slot.js";
 import { User } from "../models/User.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { Payment } from "../models/Payment.js";
+import { AdminPaymentAccount } from "../models/AdminPaymentAccount.js";
 import { sendMockEmail } from "../utils/email.js";
 
 const router = Router();
@@ -39,8 +41,8 @@ router.patch("/appointments/:id/approve", async (req, res) => {
       .populate("patient", "firstName lastName email");
 
     if (!appt) return res.status(404).json({ error: "Appointment not found" });
-    if (appt.status !== "pending") {
-      return res.status(400).json({ error: `Appointment is already ${appt.status}` });
+    if (appt.status !== "pending" && appt.status !== "scheduled") {
+      return res.status(400).json({ error: `Appointment is ${appt.status}` });
     }
 
     // ── 1. Update DB first ───────────────────────────────────────────────────
@@ -201,6 +203,26 @@ router.get("/patients", async (req, res) => {
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: "Failed to fetch patients" });
+  }
+});
+
+// ── View all payments (Transactions) ──────────────────────────────────────────
+router.get("/payments", async (req, res) => {
+  try {
+    const payments = await Payment.find()
+      .sort({ createdAt: -1 })
+      .populate("patient", "firstName lastName email")
+      .populate("adminAccount", "label method bankName network accountNumber")
+      .populate({
+        path: "appointment",
+        select: "startAt status consultationType reason",
+        populate: { path: "doctor", select: "firstName lastName" }
+      })
+      .lean();
+    return res.json({ payments });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "Failed to fetch payments" });
   }
 });
 
