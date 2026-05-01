@@ -82,8 +82,9 @@ function StatCard({ icon: Icon, label, value, color }: { icon: React.ElementType
 
 // ── Main Component ───────────────────────────────────────────────────────────
 export default function AdminDashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false); // local loading for dashboard data
 
   const [tab, setTab] = useState<"appointments" | "doctors" | "patients" | "payments">("appointments");
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -94,11 +95,12 @@ export default function AdminDashboard() {
   const [expandedDoctor, setExpandedDoctor] = useState<string | null>(null);
   const [expandedAppt, setExpandedAppt] = useState<string | null>(null);
 
-  // Guard: only admins
+  // Guard: only admins — but wait for auth to finish loading first
   useEffect(() => {
+    if (authLoading) return; // still resolving token, don't redirect yet
     if (!user) { navigate("/login", { replace: true }); return; }
     if (user.role !== "admin") { navigate("/", { replace: true }); return; }
-  }, [user, navigate]);
+  }, [user, navigate, authLoading]);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -153,6 +155,17 @@ export default function AdminDashboard() {
   const pending = appointments.filter((a) => a.status === "pending");
   const scheduled = appointments.filter((a) => a.status === "scheduled");
   const allOther = appointments.filter((a) => !["pending", "scheduled"].includes(a.status));
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-gray-500 text-sm">Loading dashboard…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!user || user.role !== "admin") return null;
 

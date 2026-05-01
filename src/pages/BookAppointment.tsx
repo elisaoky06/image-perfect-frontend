@@ -275,7 +275,12 @@ const BookAppointment = () => {
   if (authLoading) {
     return (
       <SiteLayout>
-        <div className="section-padding container-wide text-muted-foreground">Loading…</div>
+        <div className="section-padding container-wide flex items-center justify-center min-h-[40vh]">
+          <div className="text-center">
+            <div className="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-muted-foreground text-sm">Loading…</p>
+          </div>
+        </div>
       </SiteLayout>
     );
   }
