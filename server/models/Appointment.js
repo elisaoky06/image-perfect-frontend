@@ -6,12 +6,16 @@ const appointmentSchema = new mongoose.Schema(
     doctor: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     startAt: { type: Date, required: true },
     endAt: { type: Date, required: true },
-    status: { type: String, enum: ["pending", "scheduled", "cancelled", "completed"], default: "pending" },
+    status: {
+      type: String,
+      enum: ["pending", "scheduled", "cancelled", "completed"],
+      default: "pending",
+    },
     reason: { type: String, default: "" },
+    /** Doctor's clinical notes / report on the patient after the visit */
     notes: { type: String, default: "" },
 
     paymentStatus: { type: String, enum: ["unpaid", "paid", "refunded"], default: "unpaid" },
-
     isPaid: { type: Boolean, default: false },
     amount: { type: Number, default: 0 },
     consultationType: { type: String, default: "In-Person" },
@@ -20,15 +24,15 @@ const appointmentSchema = new mongoose.Schema(
       country: { type: String },
       phone: { type: String },
       email: { type: String },
-      transactionId: { type: String }
-    }
-
+      transactionId: { type: String },
+    },
   },
   { timestamps: true },
 );
 
 appointmentSchema.index({ doctor: 1, startAt: 1 });
 appointmentSchema.index({ patient: 1, startAt: -1 });
+appointmentSchema.index({ status: 1 });
 
 export const Appointment =
   mongoose.models.Appointment || mongoose.model("Appointment", appointmentSchema);
