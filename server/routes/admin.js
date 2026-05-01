@@ -258,7 +258,7 @@ router.get("/stats", async (req, res) => {
         Appointment.countDocuments({ status: "pending" }),
         Appointment.countDocuments({ status: "scheduled" }),
         Appointment.aggregate([
-          { $match: { isPaid: true } },
+          { $match: { isPaid: true, status: { $in: ["scheduled", "completed"] } } },
           { $group: { _id: null, total: { $sum: "$amount" } } },
         ]),
       ]);

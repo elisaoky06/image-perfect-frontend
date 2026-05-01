@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { ReceiptDialog } from "@/components/ReceiptDialog";
 
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -22,6 +23,10 @@ type Appt = {
   reason?: string;
   status: string;
   patient?: { firstName: string; lastName: string; email?: string; phone?: string };
+  paymentStatus?: string;
+  paymentDetails?: { method?: string; transactionId?: string };
+  amount?: number;
+  consultationType?: string;
 };
 
 const DoctorDashboard = () => {
@@ -40,6 +45,7 @@ const DoctorDashboard = () => {
   const [consultationFee, setConsultationFee] = useState("");
   const [hospitalBranch, setHospitalBranch] = useState("");
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
+  const [receiptAppt, setReceiptAppt] = useState<Appt | null>(null);
 
   useEffect(() => {
     if (!user || user.role !== "doctor") return;
@@ -449,6 +455,11 @@ const DoctorDashboard = () => {
                               {a.reason ? <p className="text-sm mt-1 text-foreground/80">Reason: {a.reason}</p> : null}
                             </div>
                             <div className="flex gap-2">
+                              {a.paymentStatus === "paid" && (
+                                <Button type="button" variant="secondary" size="sm" onClick={() => setReceiptAppt(a)}>
+                                  View Receipt
+                                </Button>
+                              )}
                               <Button type="button" variant="default" className="bg-green-600 hover:bg-green-700 text-white" size="sm" onClick={() => void confirmAppt(a._id)}>
                                 Confirm
                               </Button>
@@ -478,6 +489,11 @@ const DoctorDashboard = () => {
                               {a.reason ? <p className="text-sm mt-1 text-foreground/80">Reason: {a.reason}</p> : null}
                             </div>
                             <div className="flex gap-2">
+                              {a.paymentStatus === "paid" && (
+                                <Button type="button" variant="secondary" size="sm" onClick={() => setReceiptAppt(a)}>
+                                  View Receipt
+                                </Button>
+                              )}
                               <Button type="button" variant="secondary" size="sm" onClick={() => void downloadPatientMedicalPdf(a._id)}>
                                 Patient Medical PDF
                               </Button>
@@ -499,6 +515,7 @@ const DoctorDashboard = () => {
           </Card>
         </div>
       </div>
+      <ReceiptDialog open={!!receiptAppt} onOpenChange={(open) => !open && setReceiptAppt(null)} appointment={receiptAppt} />
     </SiteLayout>
   );
 };

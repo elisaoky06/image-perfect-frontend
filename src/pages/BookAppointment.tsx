@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import doctorHero from "@/assets/doctor-hero.jpg";
 import doctorLaptop from "@/assets/doctor-laptop.jpg";
 import doctorFemale from "@/assets/doctor-female.jpg";
+import { ReceiptDialog } from "@/components/ReceiptDialog";
 
 type DoctorRow = {
   _id: string;
@@ -85,6 +86,7 @@ const BookAppointment = () => {
   const [bank, setBank] = useState("GTBank");
   const [adminAccounts, setAdminAccounts] = useState<AdminPaymentAccount[]>([]);
   const [selectedAdminAccountId, setSelectedAdminAccountId] = useState<string>("");
+  const [receiptAppt, setReceiptAppt] = useState<MyAppointment | null>(null);
 
   const location = useLocation();
   const queryDoctorId = new URLSearchParams(location.search).get("doctor");
@@ -686,6 +688,16 @@ const BookAppointment = () => {
                           Pay Now
                         </Button>
                       )}
+                      {a.paymentStatus === "paid" && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setReceiptAppt(a)}
+                        >
+                          View Receipt
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         variant="outline"
@@ -754,6 +766,8 @@ const BookAppointment = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ReceiptDialog open={!!receiptAppt} onOpenChange={(open) => !open && setReceiptAppt(null)} appointment={receiptAppt} />
     </SiteLayout>
   );
 };

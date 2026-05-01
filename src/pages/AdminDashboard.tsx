@@ -454,7 +454,7 @@ function AppointmentCard({
             {appt.paymentDetails?.method && <Field label="Payment method" value={appt.paymentDetails.method} />}
             {appt.paymentDetails?.transactionId && <Field label="Transaction ID" value={appt.paymentDetails.transactionId} />}
           </div>
-          {(showActions || appt.status === "pending") && (appt.status === "pending" || appt.status === "scheduled") && (
+          {(showActions || appt.status === "pending") && appt.status === "pending" && (
             <div className="flex gap-3 pt-2">
               <Button
                 size="sm"
