@@ -19,7 +19,14 @@ export type PublicUser = {
   doctorProfile?: {
     specialty?: string;
     bio?: string;
+    qualification?: string;
+    yearsOfExperience?: number;
+    licenseNumber?: string;
+    languagesSpoken?: string[];
+    consultationFee?: number;
+    hospitalBranch?: string;
     weeklyAvailability?: { day: number; segments: { start: string; end: string }[] }[];
+    monthlyAvailability?: { date: string; segments: { start: string; end: string }[] }[];
   };
   patientProfile?: {
     medicalHistoryUploaded?: boolean;
