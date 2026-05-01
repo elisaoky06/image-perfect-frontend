@@ -15,6 +15,7 @@ import appointmentsRouter from "../server/routes/appointments.js";
 import contactRouter from "../server/routes/contact.js";
 import testimonialsRouter from "../server/routes/testimonials.js";
 import adminRouter from "../server/routes/admin.js";
+import paymentsRouter from "../server/routes/payments.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
@@ -74,6 +75,7 @@ app.use("/api/appointments", appointmentsRouter);
 app.use("/api/contact", contactRouter);
 app.use("/api/testimonials", testimonialsRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/payments", paymentsRouter);
 
 app.get("/api/health", (_req, res) => {
   const ready = mongoose.connection.readyState === 1;

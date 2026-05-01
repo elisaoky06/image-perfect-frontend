@@ -6,10 +6,11 @@ import { api } from "@/lib/api";
 import {
   Users, UserCheck, Calendar, Clock, CheckCircle, XCircle,
   TrendingUp, FileText, Download, RefreshCw, LogOut, Stethoscope,
-  ChevronDown, ChevronUp, DollarSign, Activity,
+  ChevronDown, ChevronUp, DollarSign, Activity, CreditCard, Plus, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type Appointment = {
@@ -36,6 +37,17 @@ type Doctor = {
 type Stats = {
   totalPatients: number; totalDoctors: number; totalAppointments: number;
   pendingCount: number; scheduledCount: number; totalRevenue: number;
+};
+
+type AdminPaymentAccount = {
+  _id: string;
+  label: string;
+  method: string;
+  network?: string;
+  bankName?: string;
+  accountNumber: string;
+  accountName: string;
+  isActive: boolean;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -73,7 +85,7 @@ export default function AdminDashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  const [tab, setTab] = useState<"appointments" | "doctors" | "patients">("appointments");
+  const [tab, setTab] = useState<"appointments" | "doctors" | "patients" | "payments">("appointments");
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -186,11 +198,12 @@ export default function AdminDashboard() {
         )}
 
         {/* ── Tab Navigation ───────────────────────────────────────────────── */}
-        <div className="flex gap-1 bg-white rounded-xl p-1 border border-gray-200 w-fit shadow-sm">
+        <div className="flex flex-wrap gap-1 bg-white rounded-xl p-1 border border-gray-200 w-fit shadow-sm">
           {([
             { key: "appointments", label: "Appointments", icon: Calendar },
             { key: "doctors", label: "Doctors & Availability", icon: Stethoscope },
             { key: "patients", label: "Patient Records", icon: Users },
+            { key: "payments", label: "Payment Accounts", icon: CreditCard },
           ] as const).map(({ key, label, icon: Icon }) => (
             <button
               key={key}
@@ -346,6 +359,11 @@ export default function AdminDashboard() {
             loading={loading}
           />
         )}
+
+        {/* ══════════════════════════════════════════════════════════════════
+            TAB: PAYMENT ACCOUNTS
+        ══════════════════════════════════════════════════════════════════ */}
+        {tab === "payments" && <PaymentAccountsTab />}
       </main>
     </div>
   );
@@ -527,6 +545,169 @@ function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message:
     <div className="py-16 flex flex-col items-center gap-3 text-gray-400">
       <Icon className="w-12 h-12 opacity-30" />
       <p className="text-sm">{message}</p>
+    </div>
+  );
+}
+
+// ── Payment Accounts Tab ──────────────────────────────────────────────────────
+function PaymentAccountsTab() {
+  const [accounts, setAccounts] = useState<AdminPaymentAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    label: "", method: "Mobile Money", network: "MTN",
+    bankName: "", accountNumber: "", accountName: "",
+  });
+
+  const fetchAccounts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await api<{ accounts: AdminPaymentAccount[] }>("/api/payments/admin-accounts");
+      setAccounts(r.accounts);
+    } catch { toast.error("Failed to load accounts"); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { void fetchAccounts(); }, [fetchAccounts]);
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.label || !form.accountNumber || !form.accountName) {
+      toast.error("Label, account number, and account name are required.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api("/api/payments/admin-accounts", {
+        method: "POST",
+        body: JSON.stringify(form),
+      });
+      toast.success("Payment account added.");
+      setForm({ label: "", method: "Mobile Money", network: "MTN", bankName: "", accountNumber: "", accountName: "" });
+      void fetchAccounts();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to add account"); }
+    finally { setSaving(false); }
+  }
+
+  async function handleDelete(id: string) {
+    if (!window.confirm("Delete this payment account?")) return;
+    try {
+      await api(`/api/payments/admin-accounts/${id}`, { method: "DELETE" });
+      toast.success("Account deleted.");
+      void fetchAccounts();
+    } catch { toast.error("Failed to delete account"); }
+  }
+
+  async function handleToggle(acc: AdminPaymentAccount) {
+    try {
+      await api(`/api/payments/admin-accounts/${acc._id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: !acc.isActive }),
+      });
+      void fetchAccounts();
+    } catch { toast.error("Failed to update"); }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-bold text-gray-900">Payment Receiving Accounts</h2>
+        <p className="text-sm text-gray-500 mt-1">
+          Add your Mobile Money or bank account numbers here. Patients will see these at checkout and can choose which account to send payment to.
+        </p>
+      </div>
+
+      {/* Add new account form */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Plus className="w-4 h-4 text-blue-600" /> Add New Account
+        </h3>
+        <form onSubmit={(e) => void handleAdd(e)} className="grid sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Label (shown to patients) *</label>
+            <Input placeholder="e.g. MTN MoMo - Admin Office" value={form.label}
+              onChange={e => setForm(f => ({ ...f, label: e.target.value }))} required />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Payment Method *</label>
+            <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              value={form.method} onChange={e => setForm(f => ({ ...f, method: e.target.value }))}>
+              <option>Mobile Money</option>
+              <option>Bank Transfer</option>
+            </select>
+          </div>
+          {form.method === "Mobile Money" ? (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Network</label>
+              <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                value={form.network} onChange={e => setForm(f => ({ ...f, network: e.target.value }))}>
+                <option>MTN</option><option>Telecel</option><option>AirtelTigo</option>
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Bank Name</label>
+              <Input placeholder="e.g. GTBank" value={form.bankName}
+                onChange={e => setForm(f => ({ ...f, bankName: e.target.value }))} />
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Account / Phone Number *</label>
+            <Input placeholder="e.g. 0241234567" value={form.accountNumber}
+              onChange={e => setForm(f => ({ ...f, accountNumber: e.target.value }))} required />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Account Name *</label>
+            <Input placeholder="e.g. Meddical Healthcare" value={form.accountName}
+              onChange={e => setForm(f => ({ ...f, accountName: e.target.value }))} required />
+          </div>
+          <div className="sm:col-span-2">
+            <Button type="submit" disabled={saving} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
+              <Plus className="w-4 h-4" />{saving ? "Saving…" : "Add Account"}
+            </Button>
+          </div>
+        </form>
+      </div>
+
+      {/* Existing accounts */}
+      {loading ? (
+        <div className="py-8 text-center text-gray-400 text-sm">Loading…</div>
+      ) : accounts.length === 0 ? (
+        <EmptyState icon={CreditCard} message="No payment accounts added yet. Add one above." />
+      ) : (
+        <div className="space-y-3">
+          <h3 className="font-semibold text-gray-900">Active Accounts ({accounts.filter(a => a.isActive).length})</h3>
+          {accounts.map(acc => (
+            <div key={acc._id} className={`bg-white rounded-2xl border shadow-sm p-4 flex items-center justify-between gap-4 ${acc.isActive ? "border-gray-100" : "border-gray-200 opacity-60"}`}>
+              <div className="flex items-center gap-4">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${acc.method === "Mobile Money" ? "bg-yellow-50 text-yellow-600" : "bg-blue-50 text-blue-600"}`}>
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">{acc.label}</p>
+                  <p className="text-xs text-gray-500">
+                    {acc.accountName} · <strong>{acc.accountNumber}</strong>
+                    {acc.network ? ` · ${acc.network}` : ""}
+                    {acc.bankName ? ` · ${acc.bankName}` : ""}
+                  </p>
+                  <p className="text-xs text-gray-400">{acc.method}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => void handleToggle(acc)}
+                  className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${acc.isActive ? "border-green-200 text-green-700 bg-green-50 hover:bg-green-100" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+                >
+                  {acc.isActive ? "Active" : "Inactive"}
+                </button>
+                <button onClick={() => void handleDelete(acc._id)} className="text-red-400 hover:text-red-600 p-1">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -24,6 +24,16 @@ type DoctorRow = {
   doctorProfile?: { specialty?: string; bio?: string; consultationFee?: number; profilePicture?: { storedFilename: string } };
 };
 
+type AdminPaymentAccount = {
+  _id: string;
+  label: string;
+  method: string;
+  network?: string;
+  bankName?: string;
+  accountNumber: string;
+  accountName: string;
+};
+
 type SlotDto = { start: string; end: string };
 
 type MyAppointment = {
@@ -73,6 +83,8 @@ const BookAppointment = () => {
   const [isPaying, setIsPaying] = useState(false);
   const [mobileNetwork, setMobileNetwork] = useState("MTN");
   const [bank, setBank] = useState("GTBank");
+  const [adminAccounts, setAdminAccounts] = useState<AdminPaymentAccount[]>([]);
+  const [selectedAdminAccountId, setSelectedAdminAccountId] = useState<string>("");
 
   const location = useLocation();
   const queryDoctorId = new URLSearchParams(location.search).get("doctor");
@@ -88,6 +100,16 @@ const BookAppointment = () => {
       if (doc) setSelected(doc);
     }
   }, [data, queryDoctorId, selected]);
+
+  // Fetch admin payment accounts for patient to choose from
+  useEffect(() => {
+    api<{ accounts: AdminPaymentAccount[] }>("/api/payments/admin-accounts")
+      .then(r => {
+        setAdminAccounts(r.accounts);
+        if (r.accounts.length > 0) setSelectedAdminAccountId(r.accounts[0]._id);
+      })
+      .catch(() => {});
+  }, []);
 
   const { data: slotPack, isFetching: slotsLoading } = useQuery({
     queryKey: ["doctor-slots", selected?._id],
@@ -224,19 +246,22 @@ const BookAppointment = () => {
     if (!pendingPayment) return;
     setIsProcessingPayment(true);
     try {
-      // 1. Initiate payment
-      const initRes = await api<{ paymentId: string; authorizationUrl?: string }>("/api/payments/initiate", {
-        method: "POST",
-        body: JSON.stringify({
-          appointmentId: pendingPayment.appointmentId,
-          method: paymentMethod,
-          amount: pendingPayment.amount,
-        }),
-      });
+      const initRes = await api<{ paymentId: string; authorizationUrl?: string; simulated?: boolean }>(
+        "/api/payments/initiate",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            appointmentId: pendingPayment.appointmentId,
+            method: "paystack",
+            amount: pendingPayment.amount,
+            adminAccountId: selectedAdminAccountId || undefined,
+          }),
+        }
+      );
 
       if (initRes.authorizationUrl) {
         window.location.href = initRes.authorizationUrl;
-        return; // We are redirecting, do not reset state or loading yet
+        return;
       }
 
       toast.error("Did not receive authorization URL from server");
@@ -564,6 +589,36 @@ const BookAppointment = () => {
                     </div>
                   </div>
                   
+                  {/* Admin payment account selector */}
+                  {adminAccounts.length > 0 && (
+                    <div className="space-y-2">
+                      <Label htmlFor="adminAccount">Pay To (Admin Account) <span className="text-red-500">*</span></Label>
+                      <select
+                        id="adminAccount"
+                        className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                        value={selectedAdminAccountId}
+                        onChange={(e) => setSelectedAdminAccountId(e.target.value)}
+                      >
+                        {adminAccounts.map(acc => (
+                          <option key={acc._id} value={acc._id}>
+                            {acc.label} — {acc.accountNumber} ({acc.accountName})
+                          </option>
+                        ))}
+                      </select>
+                      {selectedAdminAccountId && (() => {
+                        const acc = adminAccounts.find(a => a._id === selectedAdminAccountId);
+                        return acc ? (
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+                            <p className="font-semibold text-blue-800 mb-1">📲 Send payment to:</p>
+                            <p className="text-blue-700"><strong>Account Name:</strong> {acc.accountName}</p>
+                            <p className="text-blue-700"><strong>Number:</strong> {acc.accountNumber}</p>
+                            <p className="text-blue-700"><strong>Method:</strong> {acc.method}{acc.network ? ` (${acc.network})` : ""}{acc.bankName ? ` — ${acc.bankName}` : ""}</p>
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
+                  )}
+
                   <div className="pt-4 border-t mt-4">
                     <Button
                       type="button"
@@ -667,25 +722,24 @@ const BookAppointment = () => {
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Complete Payment</DialogTitle>
+            <DialogTitle>Complete Payment via Paystack</DialogTitle>
             <DialogDescription>
-              Your appointment is booked but pending payment. Please complete your payment of GHS {pendingPayment?.amount} to secure your slot.
+              Your appointment is booked and pending payment. Click below to be redirected to Paystack to complete your payment of <strong>GHS {pendingPayment?.amount}</strong>.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Payment Method</Label>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod} disabled={isProcessingPayment}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select payment method" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="paystack">Paystack (Card, Mobile Money, Bank Transfer)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2 text-sm text-muted-foreground border p-3 rounded-md">
-              You will be redirected securely to Paystack to complete your payment.
+          <div className="space-y-4 py-2">
+            {selectedAdminAccountId && (() => {
+              const acc = adminAccounts.find(a => a._id === selectedAdminAccountId);
+              return acc ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+                  <p className="font-semibold text-blue-800 mb-1">📲 Payment will go to:</p>
+                  <p className="text-blue-700"><strong>{acc.accountName}</strong> · {acc.accountNumber}</p>
+                  <p className="text-blue-700 text-xs">{acc.method}{acc.network ? ` · ${acc.network}` : ""}{acc.bankName ? ` · ${acc.bankName}` : ""}</p>
+                </div>
+              ) : null;
+            })()}
+            <div className="text-sm text-muted-foreground border p-3 rounded-md bg-muted">
+              🔒 You will be securely redirected to Paystack to complete your payment. A receipt will be sent to your email after confirmation.
             </div>
           </div>
           <DialogFooter>

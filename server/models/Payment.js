@@ -6,10 +6,12 @@ const paymentSchema = new mongoose.Schema(
     patient: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     amount: { type: Number, required: true },
     currency: { type: String, default: "GHS" },
-    method: { type: String, enum: ["paystack"], required: true },
+    method: { type: String, default: "paystack" },
+    /** Which admin payment account the patient selected to send money to */
+    adminAccount: { type: mongoose.Schema.Types.ObjectId, ref: "AdminPaymentAccount", default: null },
     status: { type: String, enum: ["pending", "completed", "failed"], default: "pending" },
-    transactionId: { type: String, default: "" }, // From Paystack
-    rawResponse: { type: mongoose.Schema.Types.Mixed }, // To store IPN / Webhook raw data
+    transactionId: { type: String, default: "" },
+    rawResponse: { type: mongoose.Schema.Types.Mixed },
   },
   { timestamps: true },
 );
