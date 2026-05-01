@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
+import { User, Calendar, Receipt, Download } from "lucide-react";
 
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -43,6 +44,7 @@ const DoctorDashboard = () => {
   const [licenseNumber, setLicenseNumber] = useState("");
   const [languagesSpoken, setLanguagesSpoken] = useState("");
   const [consultationFee, setConsultationFee] = useState("");
+  const [tab, setTab] = useState<"profile" | "appointments" | "receipts">("appointments");
   const [hospitalBranch, setHospitalBranch] = useState("");
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
   const [receiptAppt, setReceiptAppt] = useState<Appt | null>(null);
@@ -268,11 +270,34 @@ const DoctorDashboard = () => {
             <p className="text-accent font-semibold text-sm tracking-widest uppercase mb-2">Clinician</p>
             <h1 className="font-heading text-3xl sm:text-4xl text-foreground">Doctor portal</h1>
             <p className="text-muted-foreground mt-2">
-              Update how patients see you and publish the hours you accept appointments each week.
+              Update how patients see you, publish your hours, and manage visits.
             </p>
           </div>
 
-          <Card>
+          <div className="flex flex-wrap gap-1 bg-white rounded-xl p-1 border border-border w-fit shadow-sm">
+            {[
+              { key: "appointments", label: "Appointments", icon: Calendar },
+              { key: "profile", label: "Profile & Availability", icon: User },
+              { key: "receipts", label: "Payment Receipts", icon: Receipt },
+            ].map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setTab(key as any)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  tab === key
+                    ? "bg-accent text-accent-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {tab === "profile" && (
+            <div className="space-y-10">
+              <Card>
             <CardHeader>
               <CardTitle className="font-heading text-xl">Profile</CardTitle>
               <CardDescription>Displayed on the public doctors list and booking flow.</CardDescription>
@@ -428,7 +453,10 @@ const DoctorDashboard = () => {
               </Button>
             </CardContent>
           </Card>
+          </div>
+          )}
 
+          {tab === "appointments" && (
           <Card>
             <CardHeader>
               <CardTitle className="font-heading text-xl">Upcoming appointments</CardTitle>
@@ -513,6 +541,40 @@ const DoctorDashboard = () => {
               )}
             </CardContent>
           </Card>
+          )}
+
+          {tab === "receipts" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-heading text-xl">Payment Receipts</CardTitle>
+                <CardDescription>View receipts for appointments that have been paid.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {appts.filter(a => a.paymentStatus === "paid" || a.isPaid).length === 0 ? (
+                  <div className="py-12 text-center text-muted-foreground">No paid appointments found.</div>
+                ) : (
+                  <ul className="divide-y divide-border border rounded-lg">
+                    {appts.filter(a => a.paymentStatus === "paid" || a.isPaid).map(a => (
+                      <li key={a._id} className="py-4 px-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-foreground">
+                            {a.patient ? `${a.patient.firstName} ${a.patient.lastName}` : "Patient"}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(a.startAt).toLocaleString()}
+                          </p>
+                          <p className="text-sm font-semibold text-emerald-600">GHS {Number(a.amount || 0).toFixed(2)}</p>
+                        </div>
+                        <Button type="button" variant="secondary" onClick={() => setReceiptAppt(a)}>
+                          <Receipt className="w-4 h-4 mr-2" /> View Receipt
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
       <ReceiptDialog open={!!receiptAppt} onOpenChange={(open) => !open && setReceiptAppt(null)} appointment={receiptAppt} />

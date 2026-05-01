@@ -16,6 +16,7 @@ import doctorHero from "@/assets/doctor-hero.jpg";
 import doctorLaptop from "@/assets/doctor-laptop.jpg";
 import doctorFemale from "@/assets/doctor-female.jpg";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
+import { Calendar as CalendarIcon, Receipt } from "lucide-react";
 
 type DoctorRow = {
   _id: string;
@@ -87,6 +88,7 @@ const BookAppointment = () => {
   const [adminAccounts, setAdminAccounts] = useState<AdminPaymentAccount[]>([]);
   const [selectedAdminAccountId, setSelectedAdminAccountId] = useState<string>("");
   const [receiptAppt, setReceiptAppt] = useState<MyAppointment | null>(null);
+  const [patientTab, setPatientTab] = useState<"appointments" | "receipts">("appointments");
 
   const location = useLocation();
   const queryDoctorId = new URLSearchParams(location.search).get("doctor");
@@ -639,89 +641,130 @@ const BookAppointment = () => {
           )}
 
           <div>
-            <h2 className="font-heading text-2xl text-foreground mb-6">Your scheduled visits</h2>
-            {!(myAppts?.appointments || []).length ? (
-              <p className="text-muted-foreground text-sm">You do not have any upcoming appointments.</p>
-            ) : (
-              <ul className="divide-y divide-border rounded-lg border border-border bg-card">
-                {(myAppts?.appointments || []).map((a) => (
-                  <li key={a._id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-foreground">
-                        {a.doctor
-                          ? `Dr. ${a.doctor.firstName} ${a.doctor.lastName}`
-                          : "Doctor"}
-                        {a.doctor?.doctorProfile?.specialty
-                          ? ` · ${a.doctor.doctorProfile.specialty}`
-                          : ""}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(a.startAt).toLocaleString()} –{" "}
-                        {new Date(a.endAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          a.status === "pending" ? "bg-yellow-100 text-yellow-800" 
-                          : a.status === "scheduled" ? "bg-green-100 text-green-800" 
-                          : "bg-gray-100 text-gray-800"
-                        }`}>
-                          {a.status === "pending" ? "Pending Confirmation" : a.status}
-                        </span>
-                        {a.paymentStatus === "paid" ? (
-                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
-                            Paid
-                          </span>
-                        ) : (
-                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">
-                            Unpaid
-                          </span>
-                        )}
-                      </p>
-                      {a.reason ? <p className="text-sm mt-1 text-foreground/80">Note: {a.reason}</p> : null}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {a.paymentStatus !== "paid" && a.status !== "cancelled" && (
-                        <Button
-                          type="button"
-                          variant="default"
-                          size="sm"
-                          onClick={() => setPendingPayment({ appointmentId: a._id, amount: 150 })}
-                        >
-                          Pay Now
+            <div className="flex flex-wrap items-center gap-4 mb-6 border-b border-border pb-2">
+              <button
+                type="button"
+                onClick={() => setPatientTab("appointments")}
+                className={`flex items-center gap-2 pb-2 -mb-[9px] border-b-2 font-medium transition-colors ${
+                  patientTab === "appointments" ? "border-accent text-accent" : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <CalendarIcon className="w-4 h-4" /> Upcoming Visits
+              </button>
+              <button
+                type="button"
+                onClick={() => setPatientTab("receipts")}
+                className={`flex items-center gap-2 pb-2 -mb-[9px] border-b-2 font-medium transition-colors ${
+                  patientTab === "receipts" ? "border-accent text-accent" : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Receipt className="w-4 h-4" /> Payment Receipts
+              </button>
+            </div>
+
+            {patientTab === "appointments" && (
+              <>
+                {!(myAppts?.appointments || []).length ? (
+                  <p className="text-muted-foreground text-sm">You do not have any upcoming appointments.</p>
+                ) : (
+                  <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+                    {(myAppts?.appointments || []).map((a) => (
+                      <li key={a._id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-foreground">
+                            {a.doctor
+                              ? `Dr. ${a.doctor.firstName} ${a.doctor.lastName}`
+                              : "Doctor"}
+                            {a.doctor?.doctorProfile?.specialty
+                              ? ` · ${a.doctor.doctorProfile.specialty}`
+                              : ""}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(a.startAt).toLocaleString()} –{" "}
+                            {new Date(a.endAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                              a.status === "pending" ? "bg-yellow-100 text-yellow-800" 
+                              : a.status === "scheduled" ? "bg-green-100 text-green-800" 
+                              : "bg-gray-100 text-gray-800"
+                            }`}>
+                              {a.status === "pending" ? "Pending Confirmation" : a.status}
+                            </span>
+                            {a.paymentStatus === "paid" ? (
+                              <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                                Paid
+                              </span>
+                            ) : (
+                              <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+                                Unpaid
+                              </span>
+                            )}
+                          </p>
+                          {a.reason ? <p className="text-sm mt-1 text-foreground/80">Note: {a.reason}</p> : null}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {a.paymentStatus !== "paid" && a.status !== "cancelled" && (
+                            <Button
+                              type="button"
+                              variant="default"
+                              size="sm"
+                              onClick={() => setPendingPayment({ appointmentId: a._id, amount: 150 })}
+                            >
+                              Pay Now
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              if (!window.confirm("Cancel this appointment?")) return;
+                              try {
+                                await api(`/api/appointments/${a._id}/cancel`, { method: "PATCH" });
+                                toast.success("Appointment cancelled");
+                                await refetchMine();
+                                if (selected) {
+                                  await qc.invalidateQueries({ queryKey: ["doctor-slots", selected._id] });
+                                }
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : "Could not cancel");
+                              }
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+
+            {patientTab === "receipts" && (
+              <>
+                {(myAppts?.appointments || []).filter(a => a.paymentStatus === "paid" || (a as any).isPaid).length === 0 ? (
+                  <p className="text-muted-foreground text-sm">You do not have any payment receipts.</p>
+                ) : (
+                  <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+                    {(myAppts?.appointments || []).filter(a => a.paymentStatus === "paid" || (a as any).isPaid).map((a) => (
+                      <li key={a._id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-foreground">
+                            {a.doctor ? `Dr. ${a.doctor.firstName} ${a.doctor.lastName}` : "Doctor"}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(a.startAt).toLocaleString()}
+                          </p>
+                          <p className="text-sm font-semibold text-emerald-600">GHS {Number((a as any).amount || 0).toFixed(2)}</p>
+                        </div>
+                        <Button type="button" variant="secondary" onClick={() => setReceiptAppt(a)}>
+                          <Receipt className="w-4 h-4 mr-2" /> View Receipt
                         </Button>
-                      )}
-                      {a.paymentStatus === "paid" && (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => setReceiptAppt(a)}
-                        >
-                          View Receipt
-                        </Button>
-                      )}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={async () => {
-                          if (!window.confirm("Cancel this appointment?")) return;
-                          try {
-                            await api(`/api/appointments/${a._id}/cancel`, { method: "PATCH" });
-                            toast.success("Appointment cancelled");
-                            await refetchMine();
-                            if (selected) {
-                              await qc.invalidateQueries({ queryKey: ["doctor-slots", selected._id] });
-                            }
-                          } catch (err) {
-                            toast.error(err instanceof Error ? err.message : "Could not cancel");
-                          }
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </div>
         </div>

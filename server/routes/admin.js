@@ -47,6 +47,8 @@ router.patch("/appointments/:id/approve", async (req, res) => {
 
     // ── 1. Update DB first ───────────────────────────────────────────────────
     appt.status = "scheduled";
+    appt.isPaid = true;
+    appt.paymentStatus = "paid";
     await appt.save();
 
     const receiptNo = `RCP-${appt._id.toString().slice(-8).toUpperCase()}`;

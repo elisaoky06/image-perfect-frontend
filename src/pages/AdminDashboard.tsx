@@ -110,10 +110,11 @@ export default function AdminDashboard() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
+      const t = Date.now();
       const [apptData, docData, statsData] = await Promise.allSettled([
-        api<{ appointments: Appointment[] }>("/api/admin/appointments"),
-        api<{ doctors: Doctor[] }>("/api/admin/doctors"),
-        api<Stats>("/api/admin/stats"),
+        api<{ appointments: Appointment[] }>(`/api/admin/appointments?_t=${t}`),
+        api<{ doctors: Doctor[] }>(`/api/admin/doctors?_t=${t}`),
+        api<Stats>(`/api/admin/stats?_t=${t}`),
       ]);
       if (apptData.status === "fulfilled") setAppointments(apptData.value.appointments);
       if (docData.status === "fulfilled") setDoctors(docData.value.doctors);
@@ -140,6 +141,8 @@ export default function AdminDashboard() {
         `/api/admin/appointments/${id}/approve`, { method: "PATCH" }
       );
       toast.success(`✅ Approved! Receipt ${res.receiptNo} sent to patient.`);
+      // Optimistic update so it disappears immediately
+      setAppointments(prev => prev.map(a => a._id === id ? { ...a, status: "scheduled", isPaid: true, paymentStatus: "paid" } : a));
       if (res.previewUrl) window.open(res.previewUrl, "_blank");
       void fetchAll();
     } catch (e) {
