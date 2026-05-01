@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { api, getApiBase } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Calendar } from "@/components/ui/calendar";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import doctorHero from "@/assets/doctor-hero.jpg";
 import doctorLaptop from "@/assets/doctor-laptop.jpg";
 import doctorFemale from "@/assets/doctor-female.jpg";
@@ -30,6 +32,7 @@ type MyAppointment = {
   endAt: string;
   reason?: string;
   status: string;
+  paymentStatus?: string;
   doctor?: { firstName: string; lastName: string; doctorProfile?: { specialty?: string } };
 };
 
@@ -51,6 +54,9 @@ const BookAppointment = () => {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [pickedSlot, setPickedSlot] = useState<SlotDto | null>(null);
   const [reason, setReason] = useState("");
+  const [pendingPayment, setPendingPayment] = useState<{ appointmentId: string; amount: number } | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<string>("paystack");
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["doctors-list"],
@@ -128,7 +134,7 @@ const BookAppointment = () => {
   const book = async () => {
     if (!user || user.role !== "patient" || !selected || !pickedSlot) return;
     try {
-      await api("/api/appointments", {
+      const res = await api<{ appointment: MyAppointment }>("/api/appointments", {
         method: "POST",
         body: JSON.stringify({
           doctorId: selected._id,
@@ -137,13 +143,39 @@ const BookAppointment = () => {
           reason,
         }),
       });
-      toast.success("Appointment submitted! Pending confirmation by doctor.");
+      // Instead of confirming immediately, open the payment dialog
+      setPendingPayment({ appointmentId: res.appointment._id, amount: 150 });
       setPickedSlot(null);
       setReason("");
-      await qc.invalidateQueries({ queryKey: ["doctor-slots", selected._id] });
-      await qc.invalidateQueries({ queryKey: ["my-appts"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Booking failed");
+    }
+  };
+
+  const processPayment = async () => {
+    if (!pendingPayment) return;
+    setIsProcessingPayment(true);
+    try {
+      // 1. Initiate payment
+      const initRes = await api<{ paymentId: string; authorizationUrl?: string }>("/api/payments/initiate", {
+        method: "POST",
+        body: JSON.stringify({
+          appointmentId: pendingPayment.appointmentId,
+          method: paymentMethod,
+          amount: pendingPayment.amount,
+        }),
+      });
+
+      if (initRes.authorizationUrl) {
+        window.location.href = initRes.authorizationUrl;
+        return; // We are redirecting, do not reset state or loading yet
+      }
+
+      toast.error("Did not receive authorization URL from server");
+      setIsProcessingPayment(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Payment initialization failed");
+      setIsProcessingPayment(false);
     }
   };
 
@@ -387,29 +419,50 @@ const BookAppointment = () => {
                         }`}>
                           {a.status === "pending" ? "Pending Confirmation" : a.status}
                         </span>
+                        {a.paymentStatus === "paid" ? (
+                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                            Paid
+                          </span>
+                        ) : (
+                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+                            Unpaid
+                          </span>
+                        )}
                       </p>
                       {a.reason ? <p className="text-sm mt-1 text-foreground/80">Note: {a.reason}</p> : null}
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        if (!window.confirm("Cancel this appointment?")) return;
-                        try {
-                          await api(`/api/appointments/${a._id}/cancel`, { method: "PATCH" });
-                          toast.success("Appointment cancelled");
-                          await refetchMine();
-                          if (selected) {
-                            await qc.invalidateQueries({ queryKey: ["doctor-slots", selected._id] });
+                    <div className="flex items-center gap-2">
+                      {a.paymentStatus !== "paid" && a.status !== "cancelled" && (
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          onClick={() => setPendingPayment({ appointmentId: a._id, amount: 150 })}
+                        >
+                          Pay Now
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          if (!window.confirm("Cancel this appointment?")) return;
+                          try {
+                            await api(`/api/appointments/${a._id}/cancel`, { method: "PATCH" });
+                            toast.success("Appointment cancelled");
+                            await refetchMine();
+                            if (selected) {
+                              await qc.invalidateQueries({ queryKey: ["doctor-slots", selected._id] });
+                            }
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : "Could not cancel");
                           }
-                        } catch (err) {
-                          toast.error(err instanceof Error ? err.message : "Could not cancel");
-                        }
-                      }}
-                    >
-                      Cancel
-                    </Button>
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -417,6 +470,47 @@ const BookAppointment = () => {
           </div>
         </div>
       </div>
+
+      <Dialog open={!!pendingPayment} onOpenChange={(open) => {
+        if (!open && !isProcessingPayment) {
+          setPendingPayment(null);
+          // Refresh list to show unpaid appointment
+          qc.invalidateQueries({ queryKey: ["my-appts"] });
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Complete Payment</DialogTitle>
+            <DialogDescription>
+              Your appointment is booked but pending payment. Please complete your payment of GHS {pendingPayment?.amount} to secure your slot.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Payment Method</Label>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod} disabled={isProcessingPayment}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="paystack">Paystack (Card, Mobile Money, Bank Transfer)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 text-sm text-muted-foreground border p-3 rounded-md">
+              You will be redirected securely to Paystack to complete your payment.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingPayment(null)} disabled={isProcessingPayment}>
+              Cancel
+            </Button>
+            <Button onClick={processPayment} disabled={isProcessingPayment} className="bg-accent hover:bg-accent/90 text-white">
+              {isProcessingPayment ? "Processing..." : `Pay GHS ${pendingPayment?.amount}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SiteLayout>
   );
 };
