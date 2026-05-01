@@ -7,15 +7,11 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import authRoutes from "./routes/auth.js";
 import doctorRoutes from "./routes/doctors.js";
-<<<<<<< HEAD
 import appointmentRoutes from "./routes/appointments.js";
 import paymentRoutes from "./routes/payments.js";
-=======
-import appointmentsRouter from "./routes/appointments.js";
 import contactRouter from "./routes/contact.js";
 import testimonialsRouter from "./routes/testimonials.js";
 import adminRouter from "./routes/admin.js";
->>>>>>> 603410446f9f270a2783c7c9d0c0e7f1854ef592
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(__dirname, "..");
@@ -114,15 +110,11 @@ app.use((req, res, next) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/doctors", doctorRoutes);
-<<<<<<< HEAD
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/payments", paymentRoutes);
-=======
-app.use("/api/appointments", appointmentsRouter);
 app.use("/api/contact", contactRouter);
 app.use("/api/testimonials", testimonialsRouter);
 app.use("/api/admin", adminRouter);
->>>>>>> 603410446f9f270a2783c7c9d0c0e7f1854ef592
 
 app.get("/api/health", (_req, res) => {
   const ready = mongoose.connection.readyState === 1;
