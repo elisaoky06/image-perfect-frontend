@@ -1,45 +1,14 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { User } from "../models/User.js";
 import { requireAuth } from "../middleware/requireAuth.js";
-import { medicalPdfUpload, MEDICAL_UPLOAD_DIR } from "../middleware/medicalUpload.js";
+import { medicalPdfUpload, generateStoredFilename } from "../middleware/medicalUpload.js";
 
 const router = Router();
 
 const isProduction = process.env.NODE_ENV === "production";
-
-const _authDir = path.dirname(fileURLToPath(import.meta.url));
-const DEBUG_LOG_PATH = path.join(_authDir, "..", "..", "debug-6424f2.log");
-
-// #region agent log
-function dbgAuth(location, message, data, hypothesisId) {
-  const payload = {
-    sessionId: "6424f2",
-    location,
-    message,
-    data,
-    timestamp: Date.now(),
-    hypothesisId,
-    runId: "post-fix",
-  };
-  try {
-    fs.appendFileSync(DEBUG_LOG_PATH, `${JSON.stringify(payload)}\n`);
-  } catch {
-    /* ignore */
-  }
-  if (typeof fetch !== "function") return;
-  fetch("http://127.0.0.1:7811/ingest/6c86c919-6589-407b-8e31-fd0612b14d82", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "6424f2" },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
-}
-// #endregion
 
 function signToken(user) {
   const secret = process.env.JWT_SECRET;
@@ -72,15 +41,9 @@ router.post("/register", (req, res, next) => {
   const files = req.files || {};
   const medFile = files.medicalHistoryPdf?.[0];
   const picFile = files.profilePicture?.[0];
-  let uploadedPaths = [];
-  if (medFile?.path) uploadedPaths.push(medFile.path);
-  if (picFile?.path) uploadedPaths.push(picFile.path);
 
-  const cleanupUploads = () => {
-    uploadedPaths.forEach(p => {
-      if (p && fs.existsSync(p)) fs.unlinkSync(p);
-    });
-  };
+  // Memory storage: no disk paths to clean up
+  const cleanupUploads = () => {};
 
   try {
     if (!isProduction) {
@@ -98,20 +61,6 @@ router.post("/register", (req, res, next) => {
       bio,
       registrationKey,
     } = req.body || {};
-
-    // #region agent log
-    dbgAuth(
-      "auth.js:register",
-      "handler entered",
-      {
-        bodyKeys: Object.keys(req.body || {}),
-        hasFile: Boolean(req.file),
-        role: typeof role === "string" ? role : null,
-        dbReady: mongoose.connection.readyState,
-      },
-      "H4",
-    );
-    // #endregion
 
     if (!email || !password || !firstName || !lastName || !role) {
       cleanupUploads();
@@ -185,33 +134,32 @@ router.post("/register", (req, res, next) => {
     };
 
     if (role === "doctor" && picFile) {
-      const storedFilename = picFile.filename ? path.basename(picFile.filename) : path.basename(picFile.path);
+      const storedFilename = generateStoredFilename(picFile);
       doc.doctorProfile = {
         specialty: String(specialty).trim(),
         bio: bio ? String(bio).trim() : "",
         weeklyAvailability: [],
         profilePicture: {
           originalName: picFile.originalname || "profile",
-          storedFilename
+          storedFilename,
+          data: picFile.buffer ? picFile.buffer.toString("base64") : "",
+          mimeType: picFile.mimetype || "image/jpeg",
         }
       };
     }
 
     if (role === "patient" && medFile) {
-      const storedFilename = medFile.filename
-        ? path.basename(medFile.filename)
-        : medFile.path
-          ? path.basename(medFile.path)
-          : "";
-      if (!storedFilename) {
+      if (!medFile.buffer || medFile.buffer.length === 0) {
         cleanupUploads();
         return res.status(400).json({ error: "File upload did not complete. Please try again." });
       }
+      const storedFilename = generateStoredFilename(medFile);
       doc.patientProfile = {
         medicalHistoryPdf: {
           originalName: medFile.originalname || "medical-history.pdf",
           storedFilename,
           uploadedAt: new Date(),
+          data: medFile.buffer.toString("base64"),
         },
       };
     }
@@ -237,14 +185,6 @@ router.post("/register", (req, res, next) => {
   } catch (e) {
     cleanupUploads();
     console.error("register error:", e?.name, e?.message);
-    // #region agent log
-    dbgAuth(
-      "auth.js:register",
-      "catch",
-      { name: e?.name, message: e?.message, code: e?.code },
-      "H4",
-    );
-    // #endregion
     if (e?.stack && !isProduction) {
       console.error(e.stack);
     }
@@ -302,17 +242,16 @@ router.get("/me", requireAuth(), async (req, res) => {
 router.get("/me/medical-history/file", requireAuth("patient"), async (req, res) => {
   try {
     const u = req.user;
-    const stored = u.patientProfile?.medicalHistoryPdf?.storedFilename;
     const original = u.patientProfile?.medicalHistoryPdf?.originalName || "medical-history.pdf";
-    if (!stored) {
-      return res.status(404).json({ error: "No medical history file on file" });
+    const b64 = u.patientProfile?.medicalHistoryPdf?.data;
+    if (!b64) {
+      return res.status(404).json({ error: "No medical history file on record" });
     }
-    const safeName = path.basename(stored);
-    const abs = path.join(MEDICAL_UPLOAD_DIR, safeName);
-    if (!fs.existsSync(abs)) {
-      return res.status(404).json({ error: "File not found on server" });
-    }
-    return res.download(abs, original);
+    const buffer = Buffer.from(b64, "base64");
+    res.setHeader("Content-Disposition", `attachment; filename="${original}"`);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Length", buffer.length);
+    return res.send(buffer);
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: "Could not download file" });

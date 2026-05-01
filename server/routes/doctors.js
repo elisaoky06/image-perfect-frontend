@@ -1,6 +1,3 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import { Router } from "express";
 import mongoose from "mongoose";
 import { User } from "../models/User.js";
@@ -8,7 +5,7 @@ import { Appointment } from "../models/Appointment.js";
 import { Slot } from "../models/Slot.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { generateAvailableSlots, dateKeyLocal, addDays, startOfDay } from "../utils/slots.js";
-import { medicalPdfUpload, MEDICAL_UPLOAD_DIR } from "../middleware/medicalUpload.js";
+import { medicalPdfUpload, generateStoredFilename } from "../middleware/medicalUpload.js";
 
 const router = Router();
 
@@ -104,21 +101,17 @@ router.get("/:id/picture", async (req, res) => {
     if (!mongoose.isValidObjectId(id)) {
       return res.status(400).json({ error: "Invalid doctor id" });
     }
-    const d = await User.findOne({ _id: id, role: "doctor" }).lean();
-    const stored = d?.doctorProfile?.profilePicture?.storedFilename;
-    if (!stored) {
+    const d = await User.findOne({ _id: id, role: "doctor" });
+    const picData = d?.doctorProfile?.profilePicture?.data;
+    if (!picData) {
       return res.status(404).json({ error: "No profile picture" });
     }
-    const abs = path.join(MEDICAL_UPLOAD_DIR, path.basename(stored));
-    if (!fs.existsSync(abs)) {
-      return res.status(404).json({ error: "File not found on server" });
-    }
-    const origExt = path.extname(d.doctorProfile.profilePicture.originalName || "").toLowerCase();
-    if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(origExt)) {
-      res.type(origExt);
-    }
-    
-    return res.sendFile(abs);
+    const mimeType = d.doctorProfile.profilePicture.mimeType || "image/jpeg";
+    const buffer = Buffer.from(picData, "base64");
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Content-Length", buffer.length);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    return res.send(buffer);
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: "Could not fetch picture" });
@@ -182,10 +175,12 @@ router.patch("/me/profile", requireAuth("doctor"), (req, res, next) => {
     if (hospitalBranch !== undefined) u.doctorProfile.hospitalBranch = String(hospitalBranch).trim();
     
     if (picFile) {
-      const storedFilename = picFile.filename ? path.basename(picFile.filename) : path.basename(picFile.path);
+      const storedFilename = generateStoredFilename(picFile);
       u.doctorProfile.profilePicture = {
         originalName: picFile.originalname || "profile",
-        storedFilename
+        storedFilename,
+        data: picFile.buffer ? picFile.buffer.toString("base64") : "",
+        mimeType: picFile.mimetype || "image/jpeg",
       };
     }
     

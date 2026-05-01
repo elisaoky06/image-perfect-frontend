@@ -1,4 +1,3 @@
-import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
@@ -14,26 +13,6 @@ import adminRouter from "./routes/admin.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(__dirname, "..");
-const DEBUG_LOG_PATH = path.join(rootDir, "debug-6424f2.log");
-
-// #region agent log
-function dbgIndex(location, message, data, hypothesisId) {
-  const payload = {
-    sessionId: "6424f2",
-    runId: "post-fix",
-    location,
-    message,
-    data,
-    timestamp: Date.now(),
-    hypothesisId,
-  };
-  try {
-    fs.appendFileSync(DEBUG_LOG_PATH, `${JSON.stringify(payload)}\n`);
-  } catch {
-    /* ignore */
-  }
-}
-// #endregion
 
 dotenv.config({ path: path.join(rootDir, ".env") });
 
@@ -74,20 +53,6 @@ if (uri) {
 const app = express();
 
 app.use((req, _res, next) => {
-  const urlPath = (req.originalUrl || req.url || "").split("?")[0];
-  if (req.method === "POST" && /\/api\/auth\/register\/?$/.test(urlPath)) {
-    // #region agent log
-    dbgIndex(
-      "index.js:ingress",
-      "POST /api/auth/register reached API",
-      {
-        urlPath,
-        contentTypePrefix: String(req.headers["content-type"] || "").slice(0, 120),
-      },
-      "H6",
-    );
-    // #endregion
-  }
   next();
 });
 
@@ -132,14 +97,6 @@ app.get("/api/health", (_req, res) => {
 
 app.use((err, _req, res, _next) => {
   console.error("Unhandled API error:", err);
-  // #region agent log
-  dbgIndex(
-    "index.js:error-middleware",
-    "Unhandled API error",
-    { name: err?.name, message: err?.message },
-    "H7",
-  );
-  // #endregion
   if (res.headersSent) {
     return;
   }

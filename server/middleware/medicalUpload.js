@@ -1,53 +1,46 @@
-import fs from "fs";
-import path from "path";
 import { randomBytes } from "crypto";
-import { fileURLToPath } from "url";
+import path from "path";
 import multer from "multer";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-/** Absolute path to medical-history PDF storage */
-export const MEDICAL_UPLOAD_DIR = process.env.NODE_ENV === "production"
-  ? path.join("/tmp", "uploads", "medical-history")
-  : path.join(__dirname, "..", "..", "uploads", "medical-history");
-
-function ensureUploadDir() {
-  fs.mkdirSync(MEDICAL_UPLOAD_DIR, { recursive: true });
-}
-
-ensureUploadDir();
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    ensureUploadDir();
-    cb(null, MEDICAL_UPLOAD_DIR);
-  },
-  filename: (_req, file, cb) => {
-    let ext = ".pdf";
-    if (file.originalname) {
-      ext = path.extname(file.originalname).toLowerCase() || ".pdf";
-    }
-    cb(null, `${randomBytes(16).toString("hex")}${ext}`);
-  },
-});
+/**
+ * MEDICAL_UPLOAD_DIR is kept as an export for backward compatibility,
+ * but files are now stored in MongoDB (memoryStorage) so disk I/O is avoided.
+ * This makes the middleware compatible with Vercel's serverless environment.
+ */
+export const MEDICAL_UPLOAD_DIR = "/tmp/uploads/medical-history";
 
 function fileFilter(_req, file, cb) {
   if (!file?.originalname) {
     return cb(null, true);
   }
-  const mimeOk = file.mimetype === "application/pdf" || 
-                 file.mimetype === "application/x-pdf" || 
-                 file.mimetype.startsWith("image/");
-  const extOk = file.originalname.toLowerCase().endsWith(".pdf") || 
-                file.originalname.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/);
+  const mimeOk =
+    file.mimetype === "application/pdf" ||
+    file.mimetype === "application/x-pdf" ||
+    file.mimetype.startsWith("image/");
+  const extOk =
+    file.originalname.toLowerCase().endsWith(".pdf") ||
+    Boolean(file.originalname.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/));
   if (mimeOk || extOk) {
     return cb(null, true);
   }
   return cb(new Error("File must be a PDF or an Image."));
 }
 
+// Use memoryStorage so files are available as file.buffer
+// This works both locally and in Vercel serverless functions.
 export const medicalPdfUpload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter,
 });
+
+/**
+ * Given a multer MemoryStorage file object, return a stable identifier
+ * string (hex random) with extension — mirrors what diskStorage.filename did.
+ */
+export function generateStoredFilename(file) {
+  const ext = file.originalname
+    ? path.extname(file.originalname).toLowerCase() || ".bin"
+    : ".bin";
+  return `${randomBytes(16).toString("hex")}${ext}`;
+}

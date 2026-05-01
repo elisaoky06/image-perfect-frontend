@@ -5,6 +5,9 @@ const doctorProfileSchema = new mongoose.Schema(
     profilePicture: {
       originalName: { type: String, default: "" },
       storedFilename: { type: String, default: "" },
+      /** Base64-encoded image data (stored in MongoDB for serverless compatibility) */
+      data: { type: String, default: "" },
+      mimeType: { type: String, default: "" },
     },
     specialty: { 
       type: String, 
@@ -30,6 +33,8 @@ const patientProfileSchema = new mongoose.Schema(
       originalName: { type: String, default: "" },
       storedFilename: { type: String, default: "" },
       uploadedAt: { type: Date },
+      /** Base64-encoded PDF data (stored in MongoDB for serverless compatibility) */
+      data: { type: String, default: "" },
     },
   },
   { _id: false },
@@ -52,10 +57,18 @@ const userSchema = new mongoose.Schema(
 userSchema.methods.toPublicJSON = function toPublicJSON() {
   const o = this.toObject({ versionKey: false });
   delete o.passwordHash;
-  if (o.patientProfile?.medicalHistoryPdf?.storedFilename) {
+  // Never expose raw base64 file data in API responses
+  if (o.patientProfile?.medicalHistoryPdf) {
     o.patientProfile = {
-      medicalHistoryUploaded: true,
+      medicalHistoryUploaded: Boolean(
+        o.patientProfile.medicalHistoryPdf.storedFilename ||
+        o.patientProfile.medicalHistoryPdf.data
+      ),
     };
+  }
+  if (o.doctorProfile?.profilePicture?.data) {
+    // Only expose metadata, not the raw base64 blob
+    delete o.doctorProfile.profilePicture.data;
   }
   return o;
 };
