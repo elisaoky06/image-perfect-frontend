@@ -55,7 +55,7 @@ const Navbar = () => {
           )}
           <div className="flex items-center gap-2 pl-4 border-l border-primary-foreground/20">
             <Phone className="h-4 w-4 text-accent" />
-            <span className="text-primary-foreground text-sm font-medium">Emergency: (237) 681-812-255</span>
+            <span className="text-primary-foreground text-sm font-medium">Emergency: 0509769303</span>
           </div>
         </div>
 
@@ -127,7 +127,7 @@ const Navbar = () => {
             )}
             <div className="flex items-center gap-2 pt-3 border-t border-navy-light">
               <Phone className="h-4 w-4 text-accent" />
-              <span className="text-primary-foreground text-sm">Emergency: (237) 681-812-255</span>
+              <span className="text-primary-foreground text-sm">Emergency: 0509769303</span>
             </div>
           </div>
         </div>
