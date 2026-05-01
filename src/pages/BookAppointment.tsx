@@ -63,12 +63,9 @@ const BookAppointment = () => {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [pickedSlot, setPickedSlot] = useState<SlotDto | null>(null);
   const [reason, setReason] = useState("");
-<<<<<<< HEAD
   const [pendingPayment, setPendingPayment] = useState<{ appointmentId: string; amount: number } | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<string>("paystack");
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-=======
   const [paymentMethod, setPaymentMethod] = useState("Mobile Money");
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [country, setCountry] = useState("Ghana");
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
@@ -79,7 +76,6 @@ const BookAppointment = () => {
 
   const location = useLocation();
   const queryDoctorId = new URLSearchParams(location.search).get("doctor");
->>>>>>> 603410446f9f270a2783c7c9d0c0e7f1854ef592
 
   const { data, isLoading } = useQuery({
     queryKey: ["doctors-list"],
@@ -182,14 +178,10 @@ const BookAppointment = () => {
     setIsPaying(true);
     
     try {
-<<<<<<< HEAD
-      const res = await api<{ appointment: MyAppointment }>("/api/appointments", {
-=======
       // Simulate mock payment delay
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       const res = await api<{ appointment: any; previewUrl?: string }>("/api/appointments", {
->>>>>>> 603410446f9f270a2783c7c9d0c0e7f1854ef592
         method: "POST",
         body: JSON.stringify({
           doctorId: selected._id,
@@ -207,20 +199,8 @@ const BookAppointment = () => {
           }
         }),
       });
-<<<<<<< HEAD
       // Instead of confirming immediately, open the payment dialog
       setPendingPayment({ appointmentId: res.appointment._id, amount: 150 });
-      setPickedSlot(null);
-      setReason("");
-=======
-      toast.success("Payment successful! Appointment scheduled.");
-      toast.info(`A mock receipt and schedule confirmation has been emailed to ${email}.`);
-      
-      // Auto-open email preview in a new tab
-      if (res.previewUrl) {
-        window.open(res.previewUrl, "_blank");
-      }
-      
       setPickedSlot(null);
       setReason("");
       setPhone("");
@@ -228,7 +208,11 @@ const BookAppointment = () => {
       setEmail("");
       await qc.invalidateQueries({ queryKey: ["doctor-slots", selected._id] });
       await qc.invalidateQueries({ queryKey: ["my-appts"] });
->>>>>>> 603410446f9f270a2783c7c9d0c0e7f1854ef592
+      
+      toast.success("Payment initiated. Please complete payment.");
+      if (res.previewUrl) {
+        window.open(res.previewUrl, "_blank");
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Booking failed");
     } finally {

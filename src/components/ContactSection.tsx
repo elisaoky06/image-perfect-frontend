@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 
 const contactInfo = [
-  { icon: Phone, label: "Emergency", value: "0509769303" },
+  { icon: Phone, label: "Emergency", value: "(237) 681-812-255" },
   { icon: MapPin, label: "Location", value: "0123 Some Place, Some City" },
   { icon: Mail, label: "Email", value: "fillyourmail@gmail.com" },
   { icon: Clock, label: "Working Hours", value: "Mon-Sat 09:00-20:00" },
