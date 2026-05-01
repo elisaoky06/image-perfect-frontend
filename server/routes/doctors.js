@@ -8,7 +8,7 @@ import { Appointment } from "../models/Appointment.js";
 import { Slot } from "../models/Slot.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { generateAvailableSlots, dateKeyLocal, addDays, startOfDay } from "../utils/slots.js";
-import { medicalPdfUpload } from "../middleware/medicalUpload.js";
+import { medicalPdfUpload, MEDICAL_UPLOAD_DIR } from "../middleware/medicalUpload.js";
 
 const router = Router();
 
@@ -109,10 +109,7 @@ router.get("/:id/picture", async (req, res) => {
     if (!stored) {
       return res.status(404).json({ error: "No profile picture" });
     }
-    // Note: MEDICAL_UPLOAD_DIR is needed here. Since doctors.js doesn't import it, I need to either import it or use path.join directly.
-    // Let's import MEDICAL_UPLOAD_DIR from medicalUpload.js at the top of the file, but to be sure I won't ruin imports, I'll use inline path logic.
-    const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const abs = path.join(__dirname, "..", "..", "uploads", "medical-history", path.basename(stored));
+    const abs = path.join(MEDICAL_UPLOAD_DIR, path.basename(stored));
     if (!fs.existsSync(abs)) {
       return res.status(404).json({ error: "File not found on server" });
     }

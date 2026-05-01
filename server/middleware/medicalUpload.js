@@ -6,8 +6,10 @@ import multer from "multer";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/** Absolute path to medical-history PDF storage (project root /uploads/medical-history) */
-export const MEDICAL_UPLOAD_DIR = path.join(__dirname, "..", "..", "uploads", "medical-history");
+/** Absolute path to medical-history PDF storage */
+export const MEDICAL_UPLOAD_DIR = process.env.NODE_ENV === "production"
+  ? path.join("/tmp", "uploads", "medical-history")
+  : path.join(__dirname, "..", "..", "uploads", "medical-history");
 
 function ensureUploadDir() {
   fs.mkdirSync(MEDICAL_UPLOAD_DIR, { recursive: true });
