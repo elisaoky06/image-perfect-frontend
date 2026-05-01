@@ -9,6 +9,16 @@ const appointmentSchema = new mongoose.Schema(
     status: { type: String, enum: ["pending", "scheduled", "cancelled", "completed"], default: "pending" },
     reason: { type: String, default: "" },
     notes: { type: String, default: "" },
+    isPaid: { type: Boolean, default: false },
+    amount: { type: Number, default: 0 },
+    consultationType: { type: String, default: "In-Person" },
+    paymentDetails: {
+      method: { type: String },
+      country: { type: String },
+      phone: { type: String },
+      email: { type: String },
+      transactionId: { type: String }
+    }
   },
   { timestamps: true },
 );

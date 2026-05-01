@@ -18,8 +18,8 @@ const HeroSection = () => {
               compassionate care for every patient.
             </p>
             <div className="flex flex-wrap gap-4 pt-2">
-              <Button variant="default" size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold px-8 rounded-full">
-                Our Services
+              <Button variant="default" size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold px-8 rounded-full" asChild>
+                <a href="/appointments">Book an Appointment</a>
               </Button>
               <Button variant="outline" size="lg" className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 rounded-full px-8">
                 Learn More

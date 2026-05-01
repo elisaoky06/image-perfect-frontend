@@ -13,7 +13,7 @@ import { useAuth } from "@/context/AuthContext";
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 type Seg = { start: string; end: string };
-type Row = { day: number; segments: Seg[] };
+type MonthlyRow = { date: string; segments: Seg[] };
 
 type Appt = {
   _id: string;
@@ -24,34 +24,41 @@ type Appt = {
   patient?: { firstName: string; lastName: string; email?: string; phone?: string };
 };
 
-const buildEmptyWeek = (): Row[] => DAY_LABELS.map((_, day) => ({ day, segments: [] as Seg[] }));
-
 const DoctorDashboard = () => {
   const { user, loading, refreshUser } = useAuth();
-  const [week, setWeek] = useState<Row[]>(buildEmptyWeek);
+  const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
+  const [newDate, setNewDate] = useState("");
   const [specialty, setSpecialty] = useState("");
   const [bio, setBio] = useState("");
   const [phone, setPhone] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [qualification, setQualification] = useState("");
+  const [yearsOfExperience, setYearsOfExperience] = useState("");
+  const [licenseNumber, setLicenseNumber] = useState("");
+  const [languagesSpoken, setLanguagesSpoken] = useState("");
+  const [consultationFee, setConsultationFee] = useState("");
+  const [hospitalBranch, setHospitalBranch] = useState("");
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
 
   useEffect(() => {
     if (!user || user.role !== "doctor") return;
-    const w = user.doctorProfile?.weeklyAvailability;
-    const base = buildEmptyWeek();
-    if (w?.length) {
-      w.forEach((r) => {
-        const row = base.find((b) => b.day === r.day);
-        if (row) row.segments = r.segments.map((s) => ({ ...s }));
-      });
-    }
-    setWeek(base);
+    const m = user.doctorProfile?.monthlyAvailability || [];
+    setMonthly(m.map((r: any) => ({
+      date: r.date,
+      segments: r.segments.map((s: any) => ({ ...s }))
+    })).sort((a: any, b: any) => a.date.localeCompare(b.date)));
     setSpecialty(user.doctorProfile?.specialty || "");
     setBio(user.doctorProfile?.bio || "");
     setPhone(user.phone || "");
-    setFirstName(user.firstName);
-    setLastName(user.lastName);
+    setFirstName(user.firstName || "");
+    setLastName(user.lastName || "");
+    setQualification(user.doctorProfile?.qualification || "");
+    setYearsOfExperience(user.doctorProfile?.yearsOfExperience?.toString() || "");
+    setLicenseNumber(user.doctorProfile?.licenseNumber || "");
+    setLanguagesSpoken((user.doctorProfile?.languagesSpoken || []).join(", "));
+    setConsultationFee(user.doctorProfile?.consultationFee?.toString() || "");
+    setHospitalBranch(user.doctorProfile?.hospitalBranch || "");
   }, [user]);
 
   const { data: apptData, refetch } = useQuery({
@@ -92,28 +99,42 @@ const DoctorDashboard = () => {
     );
   }
 
-  const updateSegment = (day: number, idx: number, key: "start" | "end", value: string) => {
-    setWeek((prev) =>
+  const addDateRow = () => {
+    if (!newDate) return;
+    if (monthly.some(r => r.date === newDate)) {
+      toast.error("Date already added");
+      return;
+    }
+    setMonthly(prev => [...prev, { date: newDate, segments: [{ start: "09:00", end: "16:00" }] }].sort((a, b) => a.date.localeCompare(b.date)));
+    setNewDate("");
+  };
+
+  const removeDateRow = (date: string) => {
+    setMonthly(prev => prev.filter(r => r.date !== date));
+  };
+
+  const updateSegment = (date: string, idx: number, key: "start" | "end", value: string) => {
+    setMonthly((prev) =>
       prev.map((row) => {
-        if (row.day !== day) return row;
+        if (row.date !== date) return row;
         const segs = row.segments.map((s, i) => (i === idx ? { ...s, [key]: value } : s));
         return { ...row, segments: segs };
       }),
     );
   };
 
-  const addSegment = (day: number) => {
-    setWeek((prev) =>
+  const addSegment = (date: string) => {
+    setMonthly((prev) =>
       prev.map((row) =>
-        row.day === day ? { ...row, segments: [...row.segments, { start: "09:00", end: "17:00" }] } : row,
+        row.date === date ? { ...row, segments: [...row.segments, { start: "09:00", end: "16:00" }] } : row,
       ),
     );
   };
 
-  const removeSegment = (day: number, idx: number) => {
-    setWeek((prev) =>
+  const removeSegment = (date: string, idx: number) => {
+    setMonthly((prev) =>
       prev.map((row) =>
-        row.day === day ? { ...row, segments: row.segments.filter((_, i) => i !== idx) } : row,
+        row.date === date ? { ...row, segments: row.segments.filter((_, i) => i !== idx) } : row,
       ),
     );
   };
@@ -126,6 +147,12 @@ const DoctorDashboard = () => {
       fd.append("phone", phone);
       fd.append("firstName", firstName);
       fd.append("lastName", lastName);
+      fd.append("qualification", qualification);
+      fd.append("yearsOfExperience", yearsOfExperience);
+      fd.append("licenseNumber", licenseNumber);
+      fd.append("languagesSpoken", languagesSpoken);
+      fd.append("consultationFee", consultationFee);
+      fd.append("hospitalBranch", hospitalBranch);
       if (profilePicture) {
         fd.append("profilePicture", profilePicture);
       }
@@ -142,16 +169,16 @@ const DoctorDashboard = () => {
   };
 
   const saveAvailability = async () => {
-    const weeklyAvailability = week
+    const monthlyAvailability = monthly
       .filter((r) => r.segments.length)
       .map((r) => ({
-        day: r.day,
+        date: r.date,
         segments: r.segments.map((s) => ({ start: s.start, end: s.end })),
       }));
     try {
       await api("/api/doctors/me/availability", {
         method: "PATCH",
-        body: JSON.stringify({ weeklyAvailability }),
+        body: JSON.stringify({ monthlyAvailability }),
       });
       toast.success("Availability updated");
       await refreshUser();
@@ -178,6 +205,16 @@ const DoctorDashboard = () => {
       await refetch();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not confirm");
+    }
+  };
+
+  const completeAppt = async (id: string) => {
+    try {
+      await api(`/api/appointments/${id}/complete`, { method: "PATCH" });
+      toast.success("Appointment marked as completed");
+      await refetch();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not mark as completed");
     }
   };
 
@@ -253,6 +290,36 @@ const DoctorDashboard = () => {
                 <Label htmlFor="portal-phone">Phone</Label>
                 <Input id="portal-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
               </div>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="qual">Qualification (e.g. MBChB, MD)</Label>
+                  <Input id="qual" value={qualification} onChange={(e) => setQualification(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="yoe">Years of Experience</Label>
+                  <Input id="yoe" type="number" value={yearsOfExperience} onChange={(e) => setYearsOfExperience(e.target.value)} />
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="license">License Number (Unique)</Label>
+                  <Input id="license" value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="branch">Hospital Branch</Label>
+                  <Input id="branch" value={hospitalBranch} onChange={(e) => setHospitalBranch(e.target.value)} />
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="lang">Languages Spoken (comma separated)</Label>
+                  <Input id="lang" value={languagesSpoken} onChange={(e) => setLanguagesSpoken(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fee">Consultation Fee ($/GHS)</Label>
+                  <Input id="fee" type="number" value={consultationFee} onChange={(e) => setConsultationFee(e.target.value)} />
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="profilePic">Profile Picture</Label>
                 <Input 
@@ -288,49 +355,68 @@ const DoctorDashboard = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle className="font-heading text-xl">Weekly availability</CardTitle>
+              <CardTitle className="font-heading text-xl">Specific Date Availability</CardTitle>
               <CardDescription>
-                Add one or more time ranges per day. Patients see 30-minute openings that are not already booked.
+                Select specific dates you are available and add time ranges. Patients see 30-minute openings that are not already booked.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {week.map((row) => (
-                <div key={row.day} className="border border-border rounded-lg p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="font-semibold text-foreground">{DAY_LABELS[row.day]}</h3>
-                    <Button type="button" variant="outline" size="sm" onClick={() => addSegment(row.day)}>
-                      Add hours
-                    </Button>
-                  </div>
-                  {row.segments.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Not accepting patients this day.</p>
-                  ) : (
-                    row.segments.map((seg, idx) => (
-                      <div key={`${row.day}-${idx}`} className="flex flex-wrap gap-2 items-end">
-                        <div className="space-y-1">
-                          <Label>From</Label>
-                          <Input
-                            type="time"
-                            value={seg.start}
-                            onChange={(e) => updateSegment(row.day, idx, "start", e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label>To</Label>
-                          <Input
-                            type="time"
-                            value={seg.end}
-                            onChange={(e) => updateSegment(row.day, idx, "end", e.target.value)}
-                          />
-                        </div>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => removeSegment(row.day, idx)}>
-                          Remove
+              <div className="flex gap-2 items-end">
+                <div className="space-y-2 flex-1">
+                  <Label htmlFor="newDate">Add Date</Label>
+                  <Input type="date" id="newDate" value={newDate} onChange={(e) => setNewDate(e.target.value)} min={new Date().toISOString().split("T")[0]} />
+                </div>
+                <Button type="button" onClick={addDateRow}>Add Date</Button>
+              </div>
+
+              {monthly.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No dates configured. You are currently not accepting patients on any specific dates.</p>
+              ) : (
+                monthly.map((row) => (
+                  <div key={row.date} className="border border-border rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="font-semibold text-foreground">
+                        {new Date(row.date + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                      </h3>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => addSegment(row.date)}>
+                          Add hours
+                        </Button>
+                        <Button type="button" variant="destructive" size="sm" onClick={() => removeDateRow(row.date)}>
+                          Remove Date
                         </Button>
                       </div>
-                    ))
-                  )}
-                </div>
-              ))}
+                    </div>
+                    {row.segments.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No hours added for this date.</p>
+                    ) : (
+                      row.segments.map((seg, idx) => (
+                        <div key={`${row.date}-${idx}`} className="flex flex-wrap gap-2 items-end">
+                          <div className="space-y-1">
+                            <Label>From</Label>
+                            <Input
+                              type="time"
+                              value={seg.start}
+                              onChange={(e) => updateSegment(row.date, idx, "start", e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>To</Label>
+                            <Input
+                              type="time"
+                              value={seg.end}
+                              onChange={(e) => updateSegment(row.date, idx, "end", e.target.value)}
+                            />
+                          </div>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => removeSegment(row.date, idx)}>
+                            Remove
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ))
+              )}
               <Button type="button" onClick={() => void saveAvailability()} className="bg-primary text-primary-foreground">
                 Save availability
               </Button>
@@ -394,6 +480,9 @@ const DoctorDashboard = () => {
                             <div className="flex gap-2">
                               <Button type="button" variant="secondary" size="sm" onClick={() => void downloadPatientMedicalPdf(a._id)}>
                                 Patient Medical PDF
+                              </Button>
+                              <Button type="button" className="bg-green-600 hover:bg-green-700 text-white" size="sm" onClick={() => void completeAppt(a._id)}>
+                                Mark as Done
                               </Button>
                               <Button type="button" variant="outline" size="sm" onClick={() => void cancelAppt(a._id)}>
                                 Cancel

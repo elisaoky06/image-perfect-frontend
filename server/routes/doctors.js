@@ -5,6 +5,7 @@ import { Router } from "express";
 import mongoose from "mongoose";
 import { User } from "../models/User.js";
 import { Appointment } from "../models/Appointment.js";
+import { Slot } from "../models/Slot.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { generateAvailableSlots, dateKeyLocal, addDays, startOfDay } from "../utils/slots.js";
 import { medicalPdfUpload } from "../middleware/medicalUpload.js";
@@ -21,7 +22,7 @@ router.get("/", async (_req, res) => {
       firstName: d.firstName,
       lastName: d.lastName,
       phone: d.phone,
-      doctorProfile: d.doctorProfile || { specialty: "", bio: "", weeklyAvailability: [] },
+      doctorProfile: d.doctorProfile || { specialty: "", bio: "", monthlyAvailability: [] },
     }));
     return res.json({ doctors: list });
   } catch (e) {
@@ -54,22 +55,33 @@ router.get("/:id/slots", async (req, res) => {
     const fromDate = new Date(fromKey + "T00:00:00");
     const endDate = addDays(fromDate, days);
 
-    const weekly = d.doctorProfile?.weeklyAvailability || [];
-    const busy = await Appointment.find({
+    const rawSlotDocs = await Slot.find({
       doctor: d._id,
-      status: "scheduled",
-      startAt: { $lt: endDate },
-      endAt: { $gt: fromDate },
-    })
-      .select("startAt endAt")
-      .lean();
+      isBooked: false,
+      date: { $gte: fromKey, $lte: dateKeyLocal(endDate) }
+    }).lean();
 
-    const busyIntervals = busy.map((b) => ({
-      startAt: new Date(b.startAt),
-      endAt: new Date(b.endAt),
-    }));
+    // De-duplicate in case older versions created duplicate slots
+    const uniqueSlots = new Map();
+    for (const sd of rawSlotDocs) {
+      const key = `${sd.date}-${sd.startTime}`;
+      if (!uniqueSlots.has(key)) {
+        uniqueSlots.set(key, sd);
+      }
+    }
+    const slotDocs = Array.from(uniqueSlots.values());
 
-    const slots = generateAvailableSlots(weekly, busyIntervals, fromKey, days, 30);
+    // Filter out past slots today
+    const now = new Date();
+    const slots = slotDocs.map((sd) => {
+      return {
+        start: new Date(`${sd.date}T${sd.startTime}:00`),
+        end: new Date(`${sd.date}T${sd.endTime}:00`),
+      };
+    }).filter(s => s.start > now);
+    
+    // Sort
+    slots.sort((a, b) => a.start - b.start);
 
     return res.json({
       doctorId: d._id,
@@ -132,7 +144,7 @@ router.get("/:id", async (req, res) => {
         firstName: d.firstName,
         lastName: d.lastName,
         phone: d.phone,
-        doctorProfile: d.doctorProfile || { specialty: "", bio: "", weeklyAvailability: [] },
+        doctorProfile: d.doctorProfile || { specialty: "", bio: "", monthlyAvailability: [] },
       },
     });
   } catch (e) {
@@ -151,17 +163,26 @@ router.patch("/me/profile", requireAuth("doctor"), (req, res, next) => {
   });
 }, async (req, res) => {
   try {
-    const { specialty, bio, phone, firstName, lastName } = req.body || {};
+    const { specialty, bio, phone, firstName, lastName, qualification, yearsOfExperience, licenseNumber, languagesSpoken, consultationFee, hospitalBranch } = req.body || {};
     const files = req.files || {};
     const picFile = files.profilePicture?.[0];
     
     const u = req.user;
-    if (firstName) u.firstName = String(firstName).trim();
-    if (lastName) u.lastName = String(lastName).trim();
+    if (firstName !== undefined) u.firstName = String(firstName).trim();
+    if (lastName !== undefined) u.lastName = String(lastName).trim();
     if (phone !== undefined) u.phone = String(phone).trim();
     if (!u.doctorProfile) u.doctorProfile = {};
     if (specialty !== undefined) u.doctorProfile.specialty = String(specialty).trim();
     if (bio !== undefined) u.doctorProfile.bio = String(bio).trim();
+    
+    if (qualification !== undefined) u.doctorProfile.qualification = String(qualification).trim();
+    if (yearsOfExperience !== undefined) u.doctorProfile.yearsOfExperience = Number(yearsOfExperience) || 0;
+    if (licenseNumber !== undefined) u.doctorProfile.licenseNumber = String(licenseNumber).trim();
+    if (languagesSpoken !== undefined) {
+      u.doctorProfile.languagesSpoken = String(languagesSpoken).split(",").map(s => s.trim()).filter(Boolean);
+    }
+    if (consultationFee !== undefined) u.doctorProfile.consultationFee = Number(consultationFee) || 0;
+    if (hospitalBranch !== undefined) u.doctorProfile.hospitalBranch = String(hospitalBranch).trim();
     
     if (picFile) {
       const storedFilename = picFile.filename ? path.basename(picFile.filename) : path.basename(picFile.path);
@@ -181,12 +202,12 @@ router.patch("/me/profile", requireAuth("doctor"), (req, res, next) => {
 
 router.patch("/me/availability", requireAuth("doctor"), async (req, res) => {
   try {
-    const { weeklyAvailability } = req.body || {};
-    if (!Array.isArray(weeklyAvailability)) {
-      return res.status(400).json({ error: "weeklyAvailability must be an array" });
+    const { monthlyAvailability } = req.body || {};
+    if (!Array.isArray(monthlyAvailability)) {
+      return res.status(400).json({ error: "monthlyAvailability must be an array" });
     }
-    const cleaned = weeklyAvailability.map((row) => ({
-      day: Number(row.day),
+    const cleaned = monthlyAvailability.map((row) => ({
+      date: String(row.date),
       segments: Array.isArray(row.segments)
         ? row.segments.map((s) => ({
             start: String(s.start),
@@ -195,14 +216,52 @@ router.patch("/me/availability", requireAuth("doctor"), async (req, res) => {
         : [],
     }));
     for (const row of cleaned) {
-      if (row.day < 0 || row.day > 6 || Number.isNaN(row.day)) {
-        return res.status(400).json({ error: "Each entry needs day 0–6 (Sun–Sat)" });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date)) {
+        return res.status(400).json({ error: "Each entry needs a valid date YYYY-MM-DD" });
       }
     }
     const u = req.user;
     if (!u.doctorProfile) u.doctorProfile = {};
-    u.doctorProfile.weeklyAvailability = cleaned;
+    u.doctorProfile.monthlyAvailability = cleaned;
     await u.save();
+
+    // Sync to Slot collection
+    const now = new Date();
+    const todayStr = dateKeyLocal(now);
+    await Slot.deleteMany({ doctor: u._id, isBooked: false, date: { $gte: todayStr } });
+
+    const busy = await Appointment.find({
+      doctor: u._id,
+      status: { $in: ["scheduled", "pending"] },
+      startAt: { $gte: now }
+    }).select("startAt endAt").lean();
+    
+    const busyIntervals = busy.map((b) => ({
+      startAt: new Date(b.startAt),
+      endAt: new Date(b.endAt),
+    }));
+
+    const finalSlots = generateAvailableSlots(cleaned, busyIntervals, todayStr, 90, 30);
+    
+    const slotDocs = finalSlots.map(s => {
+      const hStr = String(s.start.getHours()).padStart(2, '0');
+      const mStr = String(s.start.getMinutes()).padStart(2, '0');
+      const eHStr = String(s.end.getHours()).padStart(2, '0');
+      const eMStr = String(s.end.getMinutes()).padStart(2, '0');
+      
+      return {
+        doctor: u._id,
+        date: dateKeyLocal(s.start),
+        startTime: `${hStr}:${mStr}`,
+        endTime: `${eHStr}:${eMStr}`,
+        isBooked: false
+      };
+    });
+
+    if (slotDocs.length > 0) {
+      await Slot.insertMany(slotDocs);
+    }
+
     return res.json({ user: u.toPublicJSON() });
   } catch (e) {
     console.error(e);

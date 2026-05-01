@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { SiteLayout } from "@/components/SiteLayout";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ type DoctorRow = {
   firstName: string;
   lastName: string;
   phone?: string;
-  doctorProfile?: { specialty?: string; bio?: string; profilePicture?: { storedFilename: string } };
+  doctorProfile?: { specialty?: string; bio?: string; consultationFee?: number; profilePicture?: { storedFilename: string } };
 };
 
 type SlotDto = { start: string; end: string };
@@ -44,6 +44,15 @@ function groupSlots(slots: SlotDto[]) {
   return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
+const SERVICE_FEES: Record<string, number> = {
+  "Cardiology": 150,
+  "Neurology": 180,
+  "Ophthalmology": 120,
+  "General Medicine": 80,
+  "Orthopedics": 140,
+  "Pediatrics": 100,
+};
+
 const BookAppointment = () => {
   const { user, loading: authLoading } = useAuth();
   const qc = useQueryClient();
@@ -51,11 +60,29 @@ const BookAppointment = () => {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [pickedSlot, setPickedSlot] = useState<SlotDto | null>(null);
   const [reason, setReason] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("Mobile Money");
+  const [country, setCountry] = useState("Ghana");
+  const [phone, setPhone] = useState("");
+  const [pin, setPin] = useState("");
+  const [email, setEmail] = useState("");
+  const [isPaying, setIsPaying] = useState(false);
+  const [mobileNetwork, setMobileNetwork] = useState("MTN");
+  const [bank, setBank] = useState("GTBank");
+
+  const location = useLocation();
+  const queryDoctorId = new URLSearchParams(location.search).get("doctor");
 
   const { data, isLoading } = useQuery({
     queryKey: ["doctors-list"],
     queryFn: () => api<{ doctors: DoctorRow[] }>("/api/doctors"),
   });
+
+  useEffect(() => {
+    if (data?.doctors && queryDoctorId && !selected) {
+      const doc = data.doctors.find(d => d._id === queryDoctorId);
+      if (doc) setSelected(doc);
+    }
+  }, [data, queryDoctorId, selected]);
 
   const { data: slotPack, isFetching: slotsLoading } = useQuery({
     queryKey: ["doctor-slots", selected?._id],
@@ -125,25 +152,67 @@ const BookAppointment = () => {
     }
   };
 
+  const activeSpecialty = selected?.doctorProfile?.specialty || "General Medicine";
+  const consultationFee = selected?.doctorProfile?.consultationFee || SERVICE_FEES[activeSpecialty] || 80;
+  const platformCharges = 5;
+  const totalDue = consultationFee + platformCharges;
+
   const book = async () => {
-    if (!user || user.role !== "patient" || !selected || !pickedSlot) return;
+    if (!user || user.role !== "patient" || !selected) return;
+    
+    if (!pickedSlot) {
+      toast.error("Please select a date and time slot above before confirming.");
+      return;
+    }
+
+    if (!phone || !pin || !email || !country) {
+      toast.error("Please fill in all payment details (Email, Country, Phone/Account Number, and PIN).");
+      return;
+    }
+    
+    setIsPaying(true);
+    
     try {
-      await api("/api/appointments", {
+      // Simulate mock payment delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const res = await api<{ appointment: any; previewUrl?: string }>("/api/appointments", {
         method: "POST",
         body: JSON.stringify({
           doctorId: selected._id,
           start: pickedSlot.start,
           end: pickedSlot.end,
           reason,
+          amount: totalDue,
+          consultationType: "In-Person",
+          paymentDetails: {
+            method: paymentMethod === "Mobile Money" ? `Mobile Money (${mobileNetwork})` : `Bank Transfer (${bank})`,
+            country,
+            phone,
+            pin,
+            email
+          }
         }),
       });
-      toast.success("Appointment submitted! Pending confirmation by doctor.");
+      toast.success("Payment successful! Appointment scheduled.");
+      toast.info(`A mock receipt and schedule confirmation has been emailed to ${email}.`);
+      
+      // Auto-open email preview in a new tab
+      if (res.previewUrl) {
+        window.open(res.previewUrl, "_blank");
+      }
+      
       setPickedSlot(null);
       setReason("");
+      setPhone("");
+      setPin("");
+      setEmail("");
       await qc.invalidateQueries({ queryKey: ["doctor-slots", selected._id] });
       await qc.invalidateQueries({ queryKey: ["my-appts"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Booking failed");
+    } finally {
+      setIsPaying(false);
     }
   };
 
@@ -250,7 +319,8 @@ const BookAppointment = () => {
                         Dr. {doctor.firstName} {doctor.lastName}
                       </h3>
                       <p className="text-accent text-sm font-medium mt-1">
-                        {doctor.doctorProfile?.specialty || "General practice"}
+                        {doctor.doctorProfile?.specialty || "General practice"} 
+                        {` · GHS ${doctor.doctorProfile?.consultationFee || SERVICE_FEES[doctor.doctorProfile?.specialty || "General Medicine"] || 80}`}
                       </p>
                       {doctor.doctorProfile?.bio ? (
                         <p className="text-muted-foreground text-sm mt-2 line-clamp-3">{doctor.doctorProfile.bio}</p>
@@ -337,7 +407,7 @@ const BookAppointment = () => {
                   <CardTitle className="font-heading text-xl">3. Reason for visit (optional)</CardTitle>
                   <CardDescription>Brief notes help your care team prepare.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent>
                   <div className="space-y-2">
                     <Label htmlFor="reason">Notes</Label>
                     <Input
@@ -347,14 +417,132 @@ const BookAppointment = () => {
                       placeholder="Symptoms or questions"
                     />
                   </div>
-                  <Button
-                    type="button"
-                    disabled={!pickedSlot}
-                    onClick={() => void book()}
-                    className="bg-accent hover:bg-accent/90 text-accent-foreground"
-                  >
-                    Confirm appointment
-                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="font-heading text-xl">4. Payment & Confirmation</CardTitle>
+                  <CardDescription>Enter your payment details to finalize scheduling.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="bg-muted p-4 rounded-lg mb-6 border border-border">
+                    <h3 className="font-semibold text-foreground mb-2">Cost Breakdown</h3>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-muted-foreground">Consultation Fee ({activeSpecialty})</span>
+                      <span>GHS {consultationFee}.00</span>
+                    </div>
+                    <div className="flex justify-between text-sm mb-3">
+                      <span className="text-muted-foreground">Platform Charges</span>
+                      <span>GHS {platformCharges}.00</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-foreground border-t border-border pt-2">
+                      <span>Total Due</span>
+                      <span>GHS {totalDue}.00</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Receipt Email <span className="text-red-500">*</span></Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@example.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="country">Country <span className="text-red-500">*</span></Label>
+                      <select
+                        id="country"
+                        className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        value={country}
+                        onChange={(e) => setCountry(e.target.value)}
+                      >
+                        <option value="Ghana">Ghana</option>
+                        <option value="Nigeria">Nigeria</option>
+                        <option value="Kenya">Kenya</option>
+                        <option value="South Africa">South Africa</option>
+                        <option value="USA">USA</option>
+                        <option value="UK">UK</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="paymentMethod">Payment Method <span className="text-red-500">*</span></Label>
+                      <select
+                        id="paymentMethod"
+                        className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                      >
+                        <option value="Mobile Money">Mobile Money</option>
+                        <option value="Bank Transfer">Bank Transfer</option>
+                      </select>
+                    </div>
+                    {paymentMethod === "Mobile Money" ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="mobileNetwork">Network <span className="text-red-500">*</span></Label>
+                        <select
+                          id="mobileNetwork"
+                          className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          value={mobileNetwork}
+                          onChange={(e) => setMobileNetwork(e.target.value)}
+                        >
+                          <option value="MTN">MTN</option>
+                          <option value="Telecel">Telecel</option>
+                          <option value="AirtelTigo">AirtelTigo</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Label htmlFor="bank">Select Bank <span className="text-red-500">*</span></Label>
+                        <select
+                          id="bank"
+                          className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          value={bank}
+                          onChange={(e) => setBank(e.target.value)}
+                        >
+                          <option value="GTBank">GTBank</option>
+                          <option value="Access Bank">Access Bank</option>
+                          <option value="Zenith Bank">Zenith Bank</option>
+                          <option value="Ecobank">Ecobank</option>
+                          <option value="Fidelity Bank">Fidelity Bank</option>
+                        </select>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Account / Phone Number <span className="text-red-500">*</span></Label>
+                      <Input
+                        id="phone"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="Enter your number"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="pin">{paymentMethod === "Bank Transfer" ? "Bank OTP / Code" : "Mobile Money PIN"} <span className="text-red-500">*</span></Label>
+                      <Input
+                        id="pin"
+                        type="password"
+                        value={pin}
+                        onChange={(e) => setPin(e.target.value)}
+                        placeholder={paymentMethod === "Bank Transfer" ? "Enter OTP" : "Enter 4-digit PIN"}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="pt-4 border-t mt-4">
+                    <Button
+                      type="button"
+                      disabled={isPaying}
+                      onClick={() => void book()}
+                      className="bg-accent hover:bg-accent/90 text-accent-foreground w-full sm:w-auto"
+                    >
+                      {isPaying ? "Processing Payment..." : "Pay & Confirm Appointment"}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </div>
