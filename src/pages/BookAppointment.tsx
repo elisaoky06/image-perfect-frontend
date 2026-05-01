@@ -123,7 +123,7 @@ const BookAppointment = () => {
 
   const { data: myAppts, refetch: refetchMine } = useQuery({
     queryKey: ["my-appts"],
-    queryFn: () => api<{ appointments: MyAppointment[] }>("/api/appointments/mine"),
+    queryFn: () => api<{ appointments: MyAppointment[] }>(`/api/appointments/mine?_t=${Date.now()}`),
     enabled: !!user && user.role === "patient",
   });
 

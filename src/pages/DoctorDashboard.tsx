@@ -71,7 +71,7 @@ const DoctorDashboard = () => {
 
   const { data: apptData, refetch } = useQuery({
     queryKey: ["doctor-appts"],
-    queryFn: () => api<{ appointments: Appt[] }>("/api/appointments/mine"),
+    queryFn: () => api<{ appointments: Appt[] }>(`/api/appointments/mine?_t=${Date.now()}`),
     enabled: !!user && user.role === "doctor",
   });
 
