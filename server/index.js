@@ -1,4 +1,3 @@
-import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
@@ -15,39 +14,20 @@ import adminRouter from "./routes/admin.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(__dirname, "..");
-const DEBUG_LOG_PATH = path.join(rootDir, "debug-6424f2.log");
-
-// #region agent log
-function dbgIndex(location, message, data, hypothesisId) {
-  const payload = {
-    sessionId: "6424f2",
-    runId: "post-fix",
-    location,
-    message,
-    data,
-    timestamp: Date.now(),
-    hypothesisId,
-  };
-  try {
-    fs.appendFileSync(DEBUG_LOG_PATH, `${JSON.stringify(payload)}\n`);
-  } catch {
-    /* ignore */
-  }
-}
-// #endregion
 
 dotenv.config({ path: path.join(rootDir, ".env") });
 
 const PORT = process.env.PORT || 5000;
 const uri = process.env.MONGODB_URI;
 
+let dbError = null;
+
 if (!uri) {
   console.error("Missing MONGODB_URI in .env");
-  process.exit(1);
+  dbError = "Missing MONGODB_URI";
 }
 if (!process.env.JWT_SECRET) {
   console.error("Missing JWT_SECRET in .env");
-  process.exit(1);
 }
 
 mongoose.connection.on("disconnected", () => {
@@ -55,34 +35,25 @@ mongoose.connection.on("disconnected", () => {
 });
 mongoose.connection.on("error", (err) => {
   console.error("MongoDB connection error:", err?.message || err);
+  dbError = err?.message || String(err);
 });
 
-try {
-  await mongoose.connect(uri, { serverSelectionTimeoutMS: 20000 });
-  console.log("MongoDB connected");
-} catch (err) {
-  console.error("MongoDB connection failed:", err?.message || err);
-  console.error("Check Atlas IP access list and MONGODB_URI in .env.");
-  process.exit(1);
+if (uri) {
+  // Connect without top-level await so Vercel function doesn't crash/timeout on boot
+  mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 })
+    .then(() => {
+      console.log("MongoDB connected");
+      dbError = null;
+    })
+    .catch((err) => {
+      console.error("MongoDB connection failed:", err?.message || err);
+      dbError = err?.message || String(err);
+    });
 }
 
 const app = express();
 
 app.use((req, _res, next) => {
-  const urlPath = (req.originalUrl || req.url || "").split("?")[0];
-  if (req.method === "POST" && /\/api\/auth\/register\/?$/.test(urlPath)) {
-    // #region agent log
-    dbgIndex(
-      "index.js:ingress",
-      "POST /api/auth/register reached API",
-      {
-        urlPath,
-        contentTypePrefix: String(req.headers["content-type"] || "").slice(0, 120),
-      },
-      "H6",
-    );
-    // #endregion
-  }
   next();
 });
 
@@ -122,19 +93,12 @@ app.get("/api/health", (_req, res) => {
     ok: ready,
     db: ready ? "connected" : "disconnected",
     dbReadyState: mongoose.connection.readyState,
+    dbError: dbError || null,
   });
 });
 
 app.use((err, _req, res, _next) => {
   console.error("Unhandled API error:", err);
-  // #region agent log
-  dbgIndex(
-    "index.js:error-middleware",
-    "Unhandled API error",
-    { name: err?.name, message: err?.message },
-    "H7",
-  );
-  // #endregion
   if (res.headersSent) {
     return;
   }
@@ -148,6 +112,10 @@ process.on("unhandledRejection", (reason) => {
   console.error("unhandledRejection:", reason);
 });
 
-app.listen(PORT, () => {
-  console.log(`API listening on http://localhost:${PORT}`);
-});
+if (process.env.NODE_ENV !== "production") {
+  app.listen(PORT, () => {
+    console.log(`API listening on http://localhost:${PORT}`);
+  });
+}
+
+export default app;

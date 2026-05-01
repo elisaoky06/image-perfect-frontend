@@ -7,12 +7,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/AuthContext";
+import { api } from "@/lib/api";
+import type { PublicUser } from "@/context/AuthContext";
 
 const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirectTo = searchParams.get("redirect") || "/";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,7 +25,21 @@ const Login = () => {
     try {
       await login(email, password);
       toast.success("Signed in successfully");
-      navigate(redirectTo, { replace: true });
+
+      // Determine where to redirect based on the user's role
+      // We fetch /me right after login to get the up-to-date role
+      let dest = searchParams.get("redirect") || null;
+      if (!dest) {
+        try {
+          const { user } = await api<{ user: PublicUser }>("/api/auth/me");
+          if (user.role === "admin") dest = "/admin";
+          else if (user.role === "doctor") dest = "/doctor";
+          else dest = "/appointments";
+        } catch {
+          dest = "/";
+        }
+      }
+      navigate(dest, { replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not sign in");
     } finally {
@@ -39,7 +54,7 @@ const Login = () => {
           <Card>
             <CardHeader>
               <CardTitle className="font-heading">Sign in</CardTitle>
-              <CardDescription>Use your patient or doctor account to continue.</CardDescription>
+              <CardDescription>Use your patient, doctor or admin account to continue.</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={onSubmit} className="space-y-4">
