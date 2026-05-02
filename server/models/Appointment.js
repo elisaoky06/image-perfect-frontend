@@ -8,12 +8,16 @@ const appointmentSchema = new mongoose.Schema(
     endAt: { type: Date, required: true },
     status: {
       type: String,
-      enum: ["pending", "scheduled", "cancelled", "completed"],
+      enum: ["pending", "confirmed", "in_progress", "done", "cancelled"],
       default: "pending",
     },
     reason: { type: String, default: "" },
-    /** Doctor's clinical notes / report on the patient after the visit */
-    notes: { type: String, default: "" },
+    /** Doctor's observations during the session (internal notes) */
+    observations: { type: String, default: "" },
+    /** Doctor's diagnosis */
+    diagnosis: { type: String, default: "" },
+    /** Doctor's recommendations */
+    recommendations: { type: String, default: "" },
     paymentStatus: { type: String, enum: ["unpaid", "paid", "refunded"], default: "unpaid" },
     isPaid: { type: Boolean, default: false },
     amount: { type: Number, default: 0 },

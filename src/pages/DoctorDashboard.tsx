@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
@@ -25,9 +27,13 @@ type Appt = {
   status: string;
   patient?: { firstName: string; lastName: string; email?: string; phone?: string };
   paymentStatus?: string;
+  isPaid?: boolean;
   paymentDetails?: { method?: string; transactionId?: string };
   amount?: number;
   consultationType?: string;
+  observations?: string;
+  diagnosis?: string;
+  recommendations?: string;
 };
 
 const DoctorDashboard = () => {
@@ -47,7 +53,11 @@ const DoctorDashboard = () => {
   const [tab, setTab] = useState<"profile" | "appointments" | "receipts">("appointments");
   const [hospitalBranch, setHospitalBranch] = useState("");
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
-  const [receiptAppt, setReceiptAppt] = useState<Appt | null>(null);
+  const [receiptAppt, setReceiptAppt] = useState<string | null>(null);
+  const [completingAppt, setCompletingAppt] = useState<string | null>(null);
+  const [observations, setObservations] = useState("");
+  const [diagnosis, setDiagnosis] = useState("");
+  const [recommendations, setRecommendations] = useState("");
 
   useEffect(() => {
     if (!user || user.role !== "doctor") return;
@@ -206,23 +216,35 @@ const DoctorDashboard = () => {
     }
   };
 
-  const confirmAppt = async (id: string) => {
+  const startSession = async (id: string) => {
     try {
-      await api(`/api/appointments/${id}/confirm`, { method: "PATCH" });
-      toast.success("Appointment confirmed");
+      await api(`/api/appointments/${id}/start`, { method: "PATCH" });
+      toast.success("Session started");
       await refetch();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not confirm");
+      toast.error(e instanceof Error ? e.message : "Could not start session");
     }
   };
 
-  const completeAppt = async (id: string) => {
+  const completeAppt = async () => {
+    if (!completingAppt) return;
+    if (!observations.trim() || !diagnosis.trim() || !recommendations.trim()) {
+      toast.error("All fields are required");
+      return;
+    }
     try {
-      await api(`/api/appointments/${id}/complete`, { method: "PATCH" });
-      toast.success("Appointment marked as completed");
+      await api(`/api/appointments/${completingAppt}/complete`, {
+        method: "PATCH",
+        body: JSON.stringify({ observations, diagnosis, recommendations })
+      });
+      toast.success("Appointment completed");
+      setCompletingAppt(null);
+      setObservations("");
+      setDiagnosis("");
+      setRecommendations("");
       await refetch();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not mark as completed");
+      toast.error(e instanceof Error ? e.message : "Could not complete appointment");
     }
   };
 
@@ -259,8 +281,9 @@ const DoctorDashboard = () => {
   };
 
   const appts = apptData?.appointments || [];
-  const pendingAppts = appts.filter(a => a.status === "pending");
-  const confirmedAppts = appts.filter(a => a.status === "scheduled");
+  const confirmedAppts = appts.filter(a => a.status === "confirmed");
+  const inProgressAppts = appts.filter(a => a.status === "in_progress");
+  const doneAppts = appts.filter(a => a.status === "done");
 
   return (
     <SiteLayout>
@@ -463,48 +486,14 @@ const DoctorDashboard = () => {
               <CardDescription>Scheduled visits assigned to you.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {!confirmedAppts.length && !pendingAppts.length ? (
+              {!confirmedAppts.length && !inProgressAppts.length && !doneAppts.length ? (
                 <p className="text-muted-foreground text-sm">No upcoming appointments.</p>
               ) : (
                 <div className="space-y-8">
-                  {pendingAppts.length > 0 && (
-                    <div>
-                      <h3 className="font-semibold text-yellow-600 mb-3 block">Pending Confirmation</h3>
-                      <ul className="divide-y divide-border border rounded-lg bg-yellow-50/30">
-                        {pendingAppts.map((a) => (
-                          <li key={a._id} className="py-4 px-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                            <div>
-                              <p className="font-medium text-foreground">
-                                {a.patient ? `${a.patient.firstName} ${a.patient.lastName}` : "Patient"}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                {new Date(a.startAt).toLocaleString()} – {new Date(a.endAt).toLocaleTimeString()}
-                              </p>
-                              {a.reason ? <p className="text-sm mt-1 text-foreground/80">Reason: {a.reason}</p> : null}
-                            </div>
-                            <div className="flex gap-2">
-                              {a.paymentStatus === "paid" && (
-                                <Button type="button" variant="secondary" size="sm" onClick={() => setReceiptAppt(a)}>
-                                  View Receipt
-                                </Button>
-                              )}
-                              <Button type="button" variant="default" className="bg-green-600 hover:bg-green-700 text-white" size="sm" onClick={() => void confirmAppt(a._id)}>
-                                Confirm
-                              </Button>
-                              <Button type="button" variant="outline" size="sm" onClick={() => void cancelAppt(a._id)}>
-                                Reject
-                              </Button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
                   {confirmedAppts.length > 0 && (
                     <div>
-                      <h3 className="font-semibold text-foreground mb-3 block">Scheduled Visits</h3>
-                      <ul className="divide-y divide-border border rounded-lg">
+                      <h3 className="font-semibold text-green-600 mb-3 block">Confirmed Appointments</h3>
+                      <ul className="divide-y divide-border border rounded-lg bg-green-50/30">
                         {confirmedAppts.map((a) => (
                           <li key={a._id} className="py-4 px-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                             <div>
@@ -517,20 +506,76 @@ const DoctorDashboard = () => {
                               {a.reason ? <p className="text-sm mt-1 text-foreground/80">Reason: {a.reason}</p> : null}
                             </div>
                             <div className="flex gap-2">
-                              {a.paymentStatus === "paid" && (
-                                <Button type="button" variant="secondary" size="sm" onClick={() => setReceiptAppt(a)}>
-                                  View Receipt
-                                </Button>
-                              )}
+                              <Button type="button" variant="secondary" size="sm" onClick={() => setReceiptAppt(a._id)}>
+                                View Receipt
+                              </Button>
                               <Button type="button" variant="secondary" size="sm" onClick={() => void downloadPatientMedicalPdf(a._id)}>
                                 Patient Medical PDF
                               </Button>
-                              <Button type="button" className="bg-green-600 hover:bg-green-700 text-white" size="sm" onClick={() => void completeAppt(a._id)}>
-                                Mark as Done
+                              <Button type="button" variant="default" className="bg-blue-600 hover:bg-blue-700 text-white" size="sm" onClick={() => void startSession(a._id)}>
+                                Start Session
                               </Button>
                               <Button type="button" variant="outline" size="sm" onClick={() => void cancelAppt(a._id)}>
                                 Cancel
                               </Button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {inProgressAppts.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold text-blue-600 mb-3 block">In Progress Sessions</h3>
+                      <ul className="divide-y divide-border border rounded-lg bg-blue-50/30">
+                        {inProgressAppts.map((a) => (
+                          <li key={a._id} className="py-4 px-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-foreground">
+                                {a.patient ? `${a.patient.firstName} ${a.patient.lastName}` : "Patient"}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {new Date(a.startAt).toLocaleString()} – {new Date(a.endAt).toLocaleTimeString()}
+                              </p>
+                              {a.reason ? <p className="text-sm mt-1 text-foreground/80">Reason: {a.reason}</p> : null}
+                            </div>
+                            <div className="flex gap-2">
+                              <Button type="button" variant="secondary" size="sm" onClick={() => setReceiptAppt(a._id)}>
+                                View Receipt
+                              </Button>
+                              <Button type="button" variant="secondary" size="sm" onClick={() => void downloadPatientMedicalPdf(a._id)}>
+                                Patient Medical PDF
+                              </Button>
+                              <Button type="button" variant="default" className="bg-green-600 hover:bg-green-700 text-white" size="sm" onClick={() => setCompletingAppt(a._id)}>
+                                Complete Appointment
+                              </Button>
+                              <Button type="button" variant="outline" size="sm" onClick={() => void cancelAppt(a._id)}>
+                                Cancel
+                              </Button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {doneAppts.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold text-purple-600 mb-3 block">Completed Appointments</h3>
+                      <ul className="divide-y divide-border border rounded-lg bg-purple-50/30">
+                        {doneAppts.map((a) => (
+                          <li key={a._id} className="py-4 px-4">
+                            <div>
+                              <p className="font-medium text-foreground">
+                                {a.patient ? `${a.patient.firstName} ${a.patient.lastName}` : "Patient"}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {new Date(a.startAt).toLocaleString()} – {new Date(a.endAt).toLocaleTimeString()}
+                              </p>
+                              {a.reason ? <p className="text-sm mt-1 text-foreground/80">Reason: {a.reason}</p> : null}
+                              <p className="text-sm mt-1 text-foreground/80"><strong>Diagnosis:</strong> {a.diagnosis || "Not provided"}</p>
+                              <p className="text-sm mt-1 text-foreground/80"><strong>Recommendations:</strong> {a.recommendations || "Not provided"}</p>
                             </div>
                           </li>
                         ))}
@@ -565,7 +610,7 @@ const DoctorDashboard = () => {
                           </p>
                           <p className="text-sm font-semibold text-emerald-600">GHS {Number(a.amount || 0).toFixed(2)}</p>
                         </div>
-                        <Button type="button" variant="secondary" onClick={() => setReceiptAppt(a)}>
+                        <Button type="button" variant="secondary" onClick={() => setReceiptAppt(a._id)}>
                           <Receipt className="w-4 h-4 mr-2" /> View Receipt
                         </Button>
                       </li>
@@ -577,7 +622,63 @@ const DoctorDashboard = () => {
           )}
         </div>
       </div>
-      <ReceiptDialog open={!!receiptAppt} onOpenChange={(open) => !open && setReceiptAppt(null)} appointment={receiptAppt} />
+
+      {/* Complete Appointment Dialog */}
+      <Dialog open={!!completingAppt} onOpenChange={(open) => !open && setCompletingAppt(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Complete Appointment</DialogTitle>
+            <DialogDescription>
+              Please provide the post-session write-up for this appointment.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="observations">Observations *</Label>
+              <Textarea
+                id="observations"
+                value={observations}
+                onChange={(e) => setObservations(e.target.value)}
+                placeholder="What did you observe during the session?"
+                rows={3}
+              />
+            </div>
+            <div>
+              <Label htmlFor="diagnosis">Diagnosis *</Label>
+              <Textarea
+                id="diagnosis"
+                value={diagnosis}
+                onChange={(e) => setDiagnosis(e.target.value)}
+                placeholder="Your formal diagnosis"
+                rows={2}
+              />
+            </div>
+            <div>
+              <Label htmlFor="recommendations">Recommendations *</Label>
+              <Textarea
+                id="recommendations"
+                value={recommendations}
+                onChange={(e) => setRecommendations(e.target.value)}
+                placeholder="What should the patient do next?"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCompletingAppt(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={completeAppt}
+              disabled={!observations.trim() || !diagnosis.trim() || !recommendations.trim()}
+            >
+              Complete Appointment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ReceiptDialog open={!!receiptAppt} onOpenChange={(open) => !open && setReceiptAppt(null)} appointmentId={receiptAppt || ""} />
     </SiteLayout>
   );
 };

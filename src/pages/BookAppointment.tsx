@@ -45,6 +45,9 @@ type MyAppointment = {
   reason?: string;
   status: string;
   paymentStatus?: string;
+  observations?: string;
+  diagnosis?: string;
+  recommendations?: string;
   doctor?: { firstName: string; lastName: string; doctorProfile?: { specialty?: string } };
 };
 
@@ -87,7 +90,7 @@ const BookAppointment = () => {
   const [bank, setBank] = useState("GTBank");
   const [adminAccounts, setAdminAccounts] = useState<AdminPaymentAccount[]>([]);
   const [selectedAdminAccountId, setSelectedAdminAccountId] = useState<string>("");
-  const [receiptAppt, setReceiptAppt] = useState<MyAppointment | null>(null);
+  const [receiptAppt, setReceiptAppt] = useState<string | null>(null);
   const [patientTab, setPatientTab] = useState<"appointments" | "receipts">("appointments");
 
   const location = useLocation();
@@ -684,10 +687,16 @@ const BookAppointment = () => {
                             {new Date(a.endAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                             <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-semibold ${
                               a.status === "pending" ? "bg-yellow-100 text-yellow-800" 
-                              : a.status === "scheduled" ? "bg-green-100 text-green-800" 
+                              : a.status === "confirmed" ? "bg-green-100 text-green-800"
+                              : a.status === "in_progress" ? "bg-blue-100 text-blue-800"
+                              : a.status === "done" ? "bg-purple-100 text-purple-800"
                               : "bg-gray-100 text-gray-800"
                             }`}>
-                              {a.status === "pending" ? "Pending Confirmation" : a.status}
+                              {a.status === "pending" ? "Awaiting payment" 
+                               : a.status === "confirmed" ? "Appointment confirmed"
+                               : a.status === "in_progress" ? "In session"
+                               : a.status === "done" ? "Completed"
+                               : a.status}
                             </span>
                             {a.paymentStatus === "paid" ? (
                               <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
@@ -700,6 +709,12 @@ const BookAppointment = () => {
                             )}
                           </p>
                           {a.reason ? <p className="text-sm mt-1 text-foreground/80">Note: {a.reason}</p> : null}
+                          {a.status === "done" && a.diagnosis ? (
+                            <p className="text-sm mt-1 text-foreground/80"><strong>Diagnosis:</strong> {a.diagnosis}</p>
+                          ) : null}
+                          {a.status === "done" && a.recommendations ? (
+                            <p className="text-sm mt-1 text-foreground/80"><strong>Recommendations:</strong> {a.recommendations}</p>
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-2">
                           {a.paymentStatus !== "paid" && a.status !== "cancelled" && (
@@ -757,7 +772,7 @@ const BookAppointment = () => {
                           </p>
                           <p className="text-sm font-semibold text-emerald-600">GHS {Number((a as any).amount || 0).toFixed(2)}</p>
                         </div>
-                        <Button type="button" variant="secondary" onClick={() => setReceiptAppt(a)}>
+                        <Button type="button" variant="secondary" onClick={() => setReceiptAppt(a._id)}>
                           <Receipt className="w-4 h-4 mr-2" /> View Receipt
                         </Button>
                       </li>
@@ -810,7 +825,7 @@ const BookAppointment = () => {
         </DialogContent>
       </Dialog>
 
-      <ReceiptDialog open={!!receiptAppt} onOpenChange={(open) => !open && setReceiptAppt(null)} appointment={receiptAppt} />
+      <ReceiptDialog open={!!receiptAppt} onOpenChange={(open) => !open && setReceiptAppt(null)} appointmentId={receiptAppt || ""} />
     </SiteLayout>
   );
 };

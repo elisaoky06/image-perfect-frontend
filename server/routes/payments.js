@@ -56,7 +56,7 @@ async function sendPaymentReceipts(paymentId, adminAccount) {
         </div>
         <div style="padding:28px 32px;">
           <p style="font-size:15px;">Hello <strong>${patient.firstName} ${patient.lastName}</strong>,</p>
-          <p style="font-size:15px;">Thank you! Your payment has been received. Your appointment is now <strong style="color:#1a56db;">pending admin approval</strong>. You will receive another email once it is confirmed.</p>
+          <p style="font-size:15px;">Thank you! Your payment has been received. Your appointment is now <strong style="color:#1a56db;">confirmed</strong>. You will receive another email once it is completed.</p>
 
           <table style="width:100%;border-collapse:collapse;margin:20px 0;font-size:14px;">
             <tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Receipt No.</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;font-weight:600;">${receiptNo}</td></tr>
@@ -66,11 +66,11 @@ async function sendPaymentReceipts(paymentId, adminAccount) {
             <tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Doctor</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">Dr. ${doctor.firstName} ${doctor.lastName}</td></tr>
             <tr><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Appointment Date</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">${apptDate}</td></tr>
             <tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Consultation Type</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">${appt.consultationType || "In-Person"}</td></tr>
-            <tr><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Status</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;"><span style="background:#fef9c3;color:#854d0e;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;">PENDING ADMIN APPROVAL</span></td></tr>
+            <tr><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Status</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;"><span style="background:#dcfce7;color:#166534;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;">CONFIRMED</span></td></tr>
           </table>
 
           <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;margin-top:8px;">
-            <p style="margin:0;font-size:14px;color:#166534;">🩺 Once approved by the administrator, you will receive a confirmation email with full appointment details.</p>
+            <p style="margin:0;font-size:14px;color:#166534;">🩺 Your appointment is now confirmed. You will receive a notification once the doctor completes the session.</p>
           </div>
           <p style="margin-top:24px;font-size:13px;color:#64748b;">Thank you for choosing Meddical. We look forward to caring for you.</p>
         </div>
@@ -85,7 +85,7 @@ async function sendPaymentReceipts(paymentId, adminAccount) {
         </div>
         <div style="padding:28px 32px;">
           <p style="font-size:15px;">Hello <strong>Dr. ${doctor.firstName} ${doctor.lastName}</strong>,</p>
-          <p style="font-size:15px;">A patient has paid for an appointment with you and it is now <strong>pending admin approval</strong>. You will receive another notification once the admin confirms.</p>
+          <p style="font-size:15px;">A patient has paid for an appointment with you and it is now <strong>confirmed</strong>. You can start the session when ready.</p>
 
           <table style="width:100%;border-collapse:collapse;margin:20px 0;font-size:14px;">
             <tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Patient</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">${patient.firstName} ${patient.lastName}</td></tr>
@@ -96,7 +96,7 @@ async function sendPaymentReceipts(paymentId, adminAccount) {
             <tr><th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;color:#64748b;">Payment Status</th><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;"><span style="background:#dcfce7;color:#166534;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;">✅ PAID</span></td></tr>
           </table>
 
-          <p style="font-size:14px;color:#475569;">Please log in to your dashboard to view the appointment. It will become active once approved by the administrator.</p>
+          <p style="font-size:14px;color:#475569;">Please log in to your dashboard to view the appointment. It is ready for you to start the session.</p>
         </div>
       </div>`;
 
@@ -182,9 +182,10 @@ router.post("/initiate", requireAuth("patient"), async (req, res) => {
       payment.transactionId = `MOCK_PAYSTACK_${Date.now()}`;
       await payment.save();
 
-      // Update appointment payment status
+      // Update appointment payment status and confirm appointment
       appointment.paymentStatus = "paid";
       appointment.isPaid = true;
+      appointment.status = "confirmed"; // Payment confirms the appointment
       appointment.paymentDetails = {
         ...(appointment.paymentDetails || {}),
         method: adminAccount?.method || appointment.paymentDetails?.method || "Mobile Money",
@@ -267,7 +268,7 @@ router.get("/verify/:reference", requireAuth("patient"), async (req, res) => {
       payment.transactionId = payment.transactionId || `MOCK_${Date.now()}`;
       await payment.save();
       await Appointment.findByIdAndUpdate(payment.appointment, {
-        paymentStatus: "paid", isPaid: true,
+        paymentStatus: "paid", isPaid: true, status: "confirmed",
       });
       // Send receipts (in case initiate didn't already — e.g. if verify is called standalone)
       await sendPaymentReceipts(payment._id, null);
@@ -288,7 +289,7 @@ router.get("/verify/:reference", requireAuth("patient"), async (req, res) => {
       await payment.save();
 
       await Appointment.findByIdAndUpdate(payment.appointment, {
-        paymentStatus: "paid", isPaid: true,
+        paymentStatus: "paid", isPaid: true, status: "confirmed",
       });
 
       // ✅ Send receipt to BOTH patient and doctor after real Paystack success
@@ -323,7 +324,7 @@ router.post("/webhook", async (req, res) => {
           payment.rawResponse = payload;
           await payment.save();
           await Appointment.findByIdAndUpdate(payment.appointment, {
-            paymentStatus: "paid", isPaid: true,
+            paymentStatus: "paid", isPaid: true, status: "confirmed",
           });
           // ✅ Send receipts via webhook too
           const adminAccount = payment.adminAccount
@@ -384,6 +385,55 @@ router.delete("/admin-accounts/:id", requireAuth("admin"), async (req, res) => {
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: "Failed to delete account" });
+  }
+});
+
+// ── Get receipt for an appointment ────────────────────────────────────────────
+router.get("/receipt/:appointmentId", requireAuth(["patient", "doctor", "admin"]), async (req, res) => {
+  try {
+    const { appointmentId } = req.params;
+    if (!mongoose.isValidObjectId(appointmentId)) {
+      return res.status(400).json({ error: "Invalid appointmentId" });
+    }
+
+    const appointment = await Appointment.findById(appointmentId)
+      .populate("patient", "firstName lastName email")
+      .populate("doctor", "firstName lastName email")
+      .lean();
+    if (!appointment) return res.status(404).json({ error: "Appointment not found" });
+
+    // Role-based access
+    const isPatient = req.user.role === "patient" && appointment.patient._id.equals(req.user._id);
+    const isDoctor = req.user.role === "doctor" && appointment.doctor._id.equals(req.user._id);
+    const isAdmin = req.user.role === "admin";
+    if (!isPatient && !isDoctor && !isAdmin) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    const payment = await Payment.findOne({ appointment: appointmentId })
+      .populate("adminAccount")
+      .lean();
+    if (!payment) return res.status(404).json({ error: "Payment not found" });
+
+    return res.json({
+      receipt: {
+        appointmentId: appointment._id,
+        patient: appointment.patient,
+        doctor: appointment.doctor,
+        amount: payment.amount,
+        currency: payment.currency,
+        method: payment.method,
+        transactionId: payment.transactionId,
+        status: payment.status,
+        createdAt: payment.createdAt,
+        adminAccount: payment.adminAccount,
+        appointmentDate: appointment.startAt,
+        consultationType: appointment.consultationType,
+      }
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "Failed to get receipt" });
   }
 });
 

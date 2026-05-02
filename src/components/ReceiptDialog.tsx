@@ -1,26 +1,56 @@
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CheckCircle } from "lucide-react";
+import { api } from "@/lib/api";
 
 type ReceiptProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  appointment: any; // Type generic enough for both BookAppointment & DoctorDashboard
+  appointmentId: string;
 };
 
-export function ReceiptDialog({ open, onOpenChange, appointment }: ReceiptProps) {
-  if (!appointment) return null;
+type ReceiptData = {
+  appointmentId: string;
+  patient: { firstName: string; lastName: string; email: string };
+  doctor: { firstName: string; lastName: string; email: string };
+  amount: number;
+  currency: string;
+  method: string;
+  transactionId: string;
+  status: string;
+  createdAt: string;
+  adminAccount?: any;
+  appointmentDate: string;
+  consultationType: string;
+};
 
-  const receiptNo = `RCP-${appointment._id?.slice(-8).toUpperCase()}`;
-  const transactionId = appointment.paymentDetails?.transactionId || `TXN-${appointment._id}`;
-  const amount = Number(appointment.amount || 0).toFixed(2);
-  const method = appointment.paymentDetails?.method || "Mobile Money";
+export function ReceiptDialog({ open, onOpenChange, appointmentId }: ReceiptProps) {
+  const [receipt, setReceipt] = useState<ReceiptData | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const isApproved = appointment.status === "scheduled" || appointment.status === "completed";
+  useEffect(() => {
+    if (open && appointmentId) {
+      setLoading(true);
+      api<{ receipt: ReceiptData }>(`/api/payments/receipt/${appointmentId}`)
+        .then((res) => setReceipt(res.receipt))
+        .catch(() => setReceipt(null))
+        .finally(() => setLoading(false));
+    } else {
+      setReceipt(null);
+    }
+  }, [open, appointmentId]);
 
-  const apptDate = new Date(appointment.startAt).toLocaleString("en-GH", {
+  if (!receipt && !loading) return null;
+
+  const receiptNo = `RCP-${appointmentId.slice(-8).toUpperCase()}`;
+  const transactionId = receipt?.transactionId || `TXN-${appointmentId}`;
+  const amount = Number(receipt?.amount || 0).toFixed(2);
+  const method = receipt?.method || "Mobile Money";
+
+  const apptDate = receipt?.appointmentDate ? new Date(receipt.appointmentDate).toLocaleString("en-GH", {
     weekday: "long", year: "numeric", month: "long",
     day: "numeric", hour: "2-digit", minute: "2-digit",
-  });
+  }) : "";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -31,50 +61,49 @@ export function ReceiptDialog({ open, onOpenChange, appointment }: ReceiptProps)
           </DialogTitle>
         </DialogHeader>
 
-        <div className="bg-emerald-50 text-emerald-800 p-4 rounded-xl mb-2 border border-emerald-100 text-center">
-          <p className="text-sm font-semibold uppercase tracking-wider mb-1">Total Paid</p>
-          <p className="text-3xl font-black">GHS {amount}</p>
-          {!isApproved && (
-            <p className="text-xs mt-2 bg-yellow-100 text-yellow-800 inline-block px-2 py-0.5 rounded-full border border-yellow-200">
-              Pending Admin Approval
-            </p>
-          )}
-        </div>
+        {loading ? (
+          <p className="text-center text-muted-foreground">Loading receipt...</p>
+        ) : receipt ? (
+          <>
+            <div className="bg-emerald-50 text-emerald-800 p-4 rounded-xl mb-2 border border-emerald-100 text-center">
+              <p className="text-sm font-semibold uppercase tracking-wider mb-1">Total Paid</p>
+              <p className="text-3xl font-black">GHS {amount}</p>
+            </div>
 
-        <div className="space-y-3 text-sm">
-          <div className="flex justify-between py-2 border-b">
-            <span className="text-muted-foreground">Receipt No.</span>
-            <span className="font-medium">{receiptNo}</span>
-          </div>
-          <div className="flex justify-between py-2 border-b">
-            <span className="text-muted-foreground">Transaction ID</span>
-            <span className="font-mono text-xs">{transactionId}</span>
-          </div>
-          <div className="flex justify-between py-2 border-b">
-            <span className="text-muted-foreground">Method</span>
-            <span className="font-medium">{method}</span>
-          </div>
-          <div className="flex justify-between py-2 border-b">
-            <span className="text-muted-foreground">Appointment Time</span>
-            <span className="font-medium text-right">{apptDate}</span>
-          </div>
-          <div className="flex justify-between py-2 border-b">
-            <span className="text-muted-foreground">Consultation Type</span>
-            <span className="font-medium">{appointment.consultationType || "In-Person"}</span>
-          </div>
-          {appointment.doctor?.firstName && (
-            <div className="flex justify-between py-2 border-b">
-              <span className="text-muted-foreground">Doctor</span>
-              <span className="font-medium">Dr. {appointment.doctor.firstName} {appointment.doctor.lastName}</span>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">Receipt No.</span>
+                <span className="font-medium">{receiptNo}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">Transaction ID</span>
+                <span className="font-mono text-xs">{transactionId}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">Method</span>
+                <span className="font-medium">{method}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">Appointment Time</span>
+                <span className="font-medium text-right">{apptDate}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">Consultation Type</span>
+                <span className="font-medium">{receipt.consultationType || "In-Person"}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">Doctor</span>
+                <span className="font-medium">Dr. {receipt.doctor.firstName} {receipt.doctor.lastName}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">Patient</span>
+                <span className="font-medium">{receipt.patient.firstName} {receipt.patient.lastName}</span>
+              </div>
             </div>
-          )}
-          {appointment.patient?.firstName && (
-            <div className="flex justify-between py-2 border-b">
-              <span className="text-muted-foreground">Patient</span>
-              <span className="font-medium">{appointment.patient.firstName} {appointment.patient.lastName}</span>
-            </div>
-          )}
-        </div>
+          </>
+        ) : (
+          <p className="text-center text-muted-foreground">Receipt not found</p>
+        )}
       </DialogContent>
     </Dialog>
   );

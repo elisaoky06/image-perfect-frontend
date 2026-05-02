@@ -86,7 +86,10 @@ router.get("/mine", requireAuth(["patient", "doctor"]), async (req, res) => {
     const q = req.user.role === "patient"
       ? { patient: req.user._id }
       : { doctor: req.user._id };
-    const list = await Appointment.find({ ...q, status: { $in: ["pending", "scheduled", "completed"] } })
+    const allowedStatuses = req.user.role === "patient"
+      ? ["pending", "confirmed", "in_progress", "done"]
+      : ["confirmed", "in_progress", "done"]; // Doctors only see confirmed and later
+    const list = await Appointment.find({ ...q, status: { $in: allowedStatuses } })
       .sort({ startAt: 1 })
       .populate("doctor", "firstName lastName email phone doctorProfile")
       .populate("patient", "firstName lastName email phone")
@@ -98,25 +101,25 @@ router.get("/mine", requireAuth(["patient", "doctor"]), async (req, res) => {
   }
 });
 
-// ── Confirm (doctor) ──────────────────────────────────────────────────────────
-router.patch("/:id/confirm", requireAuth("doctor"), async (req, res) => {
+// ── Start session (doctor) ──────────────────────────────────────────────────
+router.patch("/:id/start", requireAuth("doctor"), async (req, res) => {
   try {
     const id = req.params.id;
     if (!mongoose.isValidObjectId(id)) return res.status(400).json({ error: "Invalid id" });
     const appt = await Appointment.findById(id);
     if (!appt) return res.status(404).json({ error: "Appointment not found" });
     if (!appt.doctor.equals(req.user._id)) return res.status(403).json({ error: "Not allowed" });
-    if (appt.status !== "pending") return res.status(400).json({ error: "Appointment is not pending" });
-    appt.status = "scheduled";
+    if (appt.status !== "confirmed") return res.status(400).json({ error: "Appointment is not confirmed" });
+    appt.status = "in_progress";
     await appt.save();
     return res.json({ ok: true });
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ error: "Failed to confirm" });
+    return res.status(500).json({ error: "Failed to start session" });
   }
 });
 
-// ── Complete (doctor) ─────────────────────────────────────────────────────────
+// ── Complete appointment (doctor) ────────────────────────────────────────────
 router.patch("/:id/complete", requireAuth("doctor"), async (req, res) => {
   try {
     const id = req.params.id;
@@ -124,16 +127,30 @@ router.patch("/:id/complete", requireAuth("doctor"), async (req, res) => {
     const appt = await Appointment.findById(id);
     if (!appt) return res.status(404).json({ error: "Appointment not found" });
     if (!appt.doctor.equals(req.user._id)) return res.status(403).json({ error: "Not allowed" });
-    if (appt.status !== "scheduled") return res.status(400).json({ error: "Only scheduled appointments can be completed" });
-    // Save doctor notes if provided
-    const { notes } = req.body || {};
-    if (notes) appt.notes = String(notes).trim();
-    appt.status = "completed";
+    if (appt.status !== "in_progress") return res.status(400).json({ error: "Only in-progress appointments can be completed" });
+
+    const { observations, diagnosis, recommendations } = req.body || {};
+    const errors = [];
+    if (!observations || !String(observations).trim()) errors.push("observations");
+    if (!diagnosis || !String(diagnosis).trim()) errors.push("diagnosis");
+    if (!recommendations || !String(recommendations).trim()) errors.push("recommendations");
+
+    if (errors.length > 0) {
+      return res.status(400).json({
+        error: `Missing required fields: ${errors.join(", ")}`,
+        missingFields: errors
+      });
+    }
+
+    appt.observations = String(observations).trim();
+    appt.diagnosis = String(diagnosis).trim();
+    appt.recommendations = String(recommendations).trim();
+    appt.status = "done";
     await appt.save();
     return res.json({ ok: true });
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ error: "Failed to complete" });
+    return res.status(500).json({ error: "Failed to complete appointment" });
   }
 });
 
