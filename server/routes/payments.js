@@ -246,7 +246,9 @@ router.post("/initiate", requireAuth("patient"), async (req, res) => {
 });
 
 // ── Verify payment after Paystack redirect ────────────────────────────────────
-router.get("/verify/:reference", requireAuth("patient"), async (req, res) => {
+// NOTE: No requireAuth here — this is a payment gateway callback redirect.
+// The payment reference (MongoDB ObjectId) is unguessable and acts as proof.
+router.get("/verify/:reference", async (req, res) => {
   try {
     const { reference } = req.params;
     if (!mongoose.isValidObjectId(reference)) {

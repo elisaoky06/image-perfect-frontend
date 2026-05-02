@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { SiteLayout } from "@/components/SiteLayout";
+import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 
 export default function VerifyPayment() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { loading: authLoading } = useAuth();
   const [status, setStatus] = useState<"verifying" | "success" | "error">("verifying");
   const reference = searchParams.get("reference");
 
   useEffect(() => {
+    // Wait until the auth context has finished restoring the session
+    // before calling the API — prevents 401 races on page load.
+    if (authLoading) return;
+
     if (!reference) {
       setStatus("error");
       toast.error("No payment reference found.");
@@ -35,7 +41,7 @@ export default function VerifyPayment() {
     };
 
     verify();
-  }, [reference, navigate]);
+  }, [reference, navigate, authLoading]);
 
   return (
     <SiteLayout>
