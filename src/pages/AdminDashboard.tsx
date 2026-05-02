@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 // ── Types ────────────────────────────────────────────────────────────────────
 type Appointment = {
   _id: string;
-  status: "pending" | "scheduled" | "cancelled" | "completed";
+  status: "pending" | "scheduled" | "cancelled" | "completed" | "rejected" | "confirmed";
   startAt: string;
   endAt: string;
   reason?: string;
@@ -66,7 +66,9 @@ type PaymentTransaction = {
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
   scheduled: "bg-green-100 text-green-800 border-green-200",
+  confirmed: "bg-green-100 text-green-800 border-green-200",
   cancelled: "bg-red-100 text-red-800 border-red-200",
+  rejected: "bg-red-100 text-red-800 border-red-200",
   completed: "bg-blue-100 text-blue-800 border-blue-200",
 };
 
@@ -286,7 +288,7 @@ export default function AdminDashboard() {
                     <AppointmentCard key={a._id} appt={a} busyId={busyId}
                       expanded={expandedAppt === a._id}
                       onToggle={() => setExpandedAppt(expandedAppt === a._id ? null : a._id)}
-                      onApprove={handleApprove} onReject={handleReject} showActions />
+                      onApprove={handleApprove} onReject={handleReject} />
                   ))}
                 </div>
               </section>

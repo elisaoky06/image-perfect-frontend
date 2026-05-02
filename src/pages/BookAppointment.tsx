@@ -16,7 +16,7 @@ import doctorHero from "@/assets/doctor-hero.jpg";
 import doctorLaptop from "@/assets/doctor-laptop.jpg";
 import doctorFemale from "@/assets/doctor-female.jpg";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
-import { Calendar as CalendarIcon, Receipt } from "lucide-react";
+import { Calendar as CalendarIcon, Receipt, Mail, CheckCircle2, XCircle, Bell } from "lucide-react";
 
 type DoctorRow = {
   _id: string;
@@ -91,7 +91,50 @@ const BookAppointment = () => {
   const [adminAccounts, setAdminAccounts] = useState<AdminPaymentAccount[]>([]);
   const [selectedAdminAccountId, setSelectedAdminAccountId] = useState<string>("");
   const [receiptAppt, setReceiptAppt] = useState<string | null>(null);
-  const [patientTab, setPatientTab] = useState<"appointments" | "receipts">("appointments");
+  const [patientTab, setPatientTab] = useState<"appointments" | "receipts" | "mail">("appointments");
+
+  // ── Notifications / Mail state ───────────────────────────────────────────
+  type NotificationItem = {
+    _id: string;
+    type: string;
+    title: string;
+    message: string;
+    read: boolean;
+    createdAt: string;
+  };
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  const fetchNotifications = async () => {
+    try {
+      setNotifLoading(true);
+      const res = await api<{ notifications: NotificationItem[]; unreadCount: number }>("/api/notifications");
+      setNotifications(res.notifications);
+      setUnreadCount(res.unreadCount);
+    } catch { /* ignore */ }
+    finally { setNotifLoading(false); }
+  };
+
+  useEffect(() => {
+    if (user?.role === "patient") { void fetchNotifications(); }
+  }, [user]);
+
+  const markAsRead = async (id: string) => {
+    try {
+      await api(`/api/notifications/${id}/read`, { method: "PATCH" });
+      setNotifications(prev => prev.map(n => n._id === id ? { ...n, read: true } : n));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch { /* ignore */ }
+  };
+
+  const markAllRead = async () => {
+    try {
+      await api("/api/notifications/read-all", { method: "PATCH" });
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch { /* ignore */ }
+  };
 
   const location = useLocation();
   const queryDoctorId = new URLSearchParams(location.search).get("doctor");
@@ -663,6 +706,18 @@ const BookAppointment = () => {
               >
                 <Receipt className="w-4 h-4" /> Payment Receipts
               </button>
+              <button
+                type="button"
+                onClick={() => { setPatientTab("mail"); void fetchNotifications(); }}
+                className={`flex items-center gap-2 pb-2 -mb-[9px] border-b-2 font-medium transition-colors ${
+                  patientTab === "mail" ? "border-accent text-accent" : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Mail className="w-4 h-4" /> Mail
+                {unreadCount > 0 && (
+                  <span className="ml-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white">{unreadCount}</span>
+                )}
+              </button>
             </div>
 
             {patientTab === "appointments" && (
@@ -687,15 +742,18 @@ const BookAppointment = () => {
                             {new Date(a.endAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                             <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-semibold ${
                               a.status === "pending" ? "bg-yellow-100 text-yellow-800" 
-                              : a.status === "confirmed" ? "bg-green-100 text-green-800"
+                              : a.status === "confirmed" || a.status === "scheduled" ? "bg-green-100 text-green-800"
                               : a.status === "in_progress" ? "bg-blue-100 text-blue-800"
                               : a.status === "done" ? "bg-purple-100 text-purple-800"
+                              : a.status === "rejected" ? "bg-red-100 text-red-800"
                               : "bg-gray-100 text-gray-800"
                             }`}>
-                              {a.status === "pending" ? "Awaiting payment" 
-                               : a.status === "confirmed" ? "Appointment confirmed"
+                              {a.status === "pending" && a.paymentStatus === "paid" ? "Pending" 
+                               : a.status === "pending" ? "Awaiting payment" 
+                               : a.status === "confirmed" || a.status === "scheduled" ? "Scheduled"
                                : a.status === "in_progress" ? "In session"
                                : a.status === "done" ? "Completed"
+                               : a.status === "rejected" ? "Rejected"
                                : a.status}
                             </span>
                             {a.paymentStatus === "paid" ? (
@@ -780,6 +838,69 @@ const BookAppointment = () => {
                   </ul>
                 )}
               </>
+            )}
+
+            {patientTab === "mail" && (
+              <div className="space-y-4">
+                {notifLoading ? (
+                  <p className="text-muted-foreground text-sm">Loading notifications…</p>
+                ) : notifications.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <Mail className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
+                    <p className="text-muted-foreground text-sm">No messages yet.</p>
+                  </div>
+                ) : (
+                  <>
+                    {unreadCount > 0 && (
+                      <div className="flex justify-end">
+                        <Button type="button" variant="outline" size="sm" onClick={() => void markAllRead()}>
+                          Mark all as read
+                        </Button>
+                      </div>
+                    )}
+                    <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+                      {notifications.map((n) => (
+                        <li
+                          key={n._id}
+                          className={`p-4 cursor-pointer transition-colors hover:bg-muted/50 ${
+                            !n.read ? "bg-blue-50/60 border-l-4 border-l-blue-500" : ""
+                          }`}
+                          onClick={() => { if (!n.read) void markAsRead(n._id); }}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                                n.type === "appointment_approved" ? "bg-green-100 text-green-600" :
+                                n.type === "appointment_rejected" ? "bg-red-100 text-red-600" :
+                                "bg-blue-100 text-blue-600"
+                              }`}>
+                                {n.type === "appointment_approved" ? <CheckCircle2 className="w-4 h-4" /> :
+                                 n.type === "appointment_rejected" ? <XCircle className="w-4 h-4" /> :
+                                 <Bell className="w-4 h-4" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className={`text-sm font-semibold ${!n.read ? "text-foreground" : "text-muted-foreground"}`}>
+                                  {n.title}
+                                </p>
+                                <p className="text-sm text-muted-foreground whitespace-pre-line mt-1">{n.message}</p>
+                                <p className="text-xs text-muted-foreground/70 mt-2">
+                                  {new Date(n.createdAt).toLocaleString("en-GH", {
+                                    weekday: "short", year: "numeric", month: "short",
+                                    day: "numeric", hour: "2-digit", minute: "2-digit",
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+                            {!n.read && (
+                              <span className="shrink-0 w-2.5 h-2.5 rounded-full bg-blue-500 mt-2" />
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
             )}
           </div>
         </div>

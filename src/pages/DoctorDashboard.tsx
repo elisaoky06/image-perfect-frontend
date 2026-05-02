@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
-import { User, Calendar, Receipt, Download } from "lucide-react";
+import { User, Calendar, Receipt, Download, Mail, CheckCircle2, XCircle, Bell } from "lucide-react";
 
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -50,7 +50,7 @@ const DoctorDashboard = () => {
   const [licenseNumber, setLicenseNumber] = useState("");
   const [languagesSpoken, setLanguagesSpoken] = useState("");
   const [consultationFee, setConsultationFee] = useState("");
-  const [tab, setTab] = useState<"profile" | "appointments" | "receipts">("appointments");
+  const [tab, setTab] = useState<"profile" | "appointments" | "receipts" | "mail">("appointments");
   const [hospitalBranch, setHospitalBranch] = useState("");
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
   const [receiptAppt, setReceiptAppt] = useState<string | null>(null);
@@ -58,6 +58,49 @@ const DoctorDashboard = () => {
   const [observations, setObservations] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
   const [recommendations, setRecommendations] = useState("");
+
+  // ── Notifications / Mail state ───────────────────────────────────────────
+  type NotificationItem = {
+    _id: string;
+    type: string;
+    title: string;
+    message: string;
+    read: boolean;
+    createdAt: string;
+  };
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  const fetchNotifications = async () => {
+    try {
+      setNotifLoading(true);
+      const res = await api<{ notifications: NotificationItem[]; unreadCount: number }>("/api/notifications");
+      setNotifications(res.notifications);
+      setUnreadCount(res.unreadCount);
+    } catch { /* ignore */ }
+    finally { setNotifLoading(false); }
+  };
+
+  useEffect(() => {
+    if (user?.role === "doctor") { void fetchNotifications(); }
+  }, [user]);
+
+  const markNotifAsRead = async (id: string) => {
+    try {
+      await api(`/api/notifications/${id}/read`, { method: "PATCH" });
+      setNotifications(prev => prev.map(n => n._id === id ? { ...n, read: true } : n));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch { /* ignore */ }
+  };
+
+  const markAllNotifRead = async () => {
+    try {
+      await api("/api/notifications/read-all", { method: "PATCH" });
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     if (!user || user.role !== "doctor") return;
@@ -281,7 +324,8 @@ const DoctorDashboard = () => {
   };
 
   const appts = apptData?.appointments || [];
-  const confirmedAppts = appts.filter(a => a.status === "confirmed");
+  const pendingAppts = appts.filter(a => a.status === "pending");
+  const confirmedAppts = appts.filter(a => a.status === "confirmed" || a.status === "scheduled");
   const inProgressAppts = appts.filter(a => a.status === "in_progress");
   const doneAppts = appts.filter(a => a.status === "done");
 
@@ -302,10 +346,11 @@ const DoctorDashboard = () => {
               { key: "appointments", label: "Appointments", icon: Calendar },
               { key: "profile", label: "Profile & Availability", icon: User },
               { key: "receipts", label: "Payment Receipts", icon: Receipt },
+              { key: "mail", label: "Mail", icon: Mail },
             ].map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
-                onClick={() => setTab(key as any)}
+                onClick={() => { setTab(key as any); if (key === "mail") void fetchNotifications(); }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                   tab === key
                     ? "bg-accent text-accent-foreground shadow-sm"
@@ -314,6 +359,9 @@ const DoctorDashboard = () => {
               >
                 <Icon className="w-4 h-4" />
                 {label}
+                {key === "mail" && unreadCount > 0 && (
+                  <span className="ml-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white">{unreadCount}</span>
+                )}
               </button>
             ))}
           </div>
@@ -486,13 +534,42 @@ const DoctorDashboard = () => {
               <CardDescription>Scheduled visits assigned to you.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {!confirmedAppts.length && !inProgressAppts.length && !doneAppts.length ? (
+              {!pendingAppts.length && !confirmedAppts.length && !inProgressAppts.length && !doneAppts.length ? (
                 <p className="text-muted-foreground text-sm">No upcoming appointments.</p>
               ) : (
                 <div className="space-y-8">
+                  {pendingAppts.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold text-yellow-600 mb-3 block">Pending Approval ({pendingAppts.length})</h3>
+                      <ul className="divide-y divide-border border rounded-lg bg-yellow-50/30">
+                        {pendingAppts.map((a) => (
+                          <li key={a._id} className="py-4 px-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-foreground">
+                                {a.patient ? `${a.patient.firstName} ${a.patient.lastName}` : "Patient"}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {new Date(a.startAt).toLocaleString()} – {new Date(a.endAt).toLocaleTimeString()}
+                              </p>
+                              {a.reason ? <p className="text-sm mt-1 text-foreground/80">Reason: {a.reason}</p> : null}
+                              <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                                {a.isPaid ? "Pending – Paid" : "Pending – Awaiting Payment"}
+                              </span>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button type="button" variant="secondary" size="sm" onClick={() => setReceiptAppt(a._id)}>
+                                View Receipt
+                              </Button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {confirmedAppts.length > 0 && (
                     <div>
-                      <h3 className="font-semibold text-green-600 mb-3 block">Confirmed Appointments</h3>
+                      <h3 className="font-semibold text-green-600 mb-3 block">Scheduled Appointments</h3>
                       <ul className="divide-y divide-border border rounded-lg bg-green-50/30">
                         {confirmedAppts.map((a) => (
                           <li key={a._id} className="py-4 px-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -616,6 +693,75 @@ const DoctorDashboard = () => {
                       </li>
                     ))}
                   </ul>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {tab === "mail" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-heading text-xl">Mail / Notifications</CardTitle>
+                <CardDescription>Messages from the administrator about your appointments.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {notifLoading ? (
+                  <p className="text-center text-muted-foreground">Loading notifications…</p>
+                ) : notifications.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <Mail className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
+                    <p className="text-muted-foreground text-sm">No messages yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {unreadCount > 0 && (
+                      <div className="flex justify-end">
+                        <Button type="button" variant="outline" size="sm" onClick={() => void markAllNotifRead()}>
+                          Mark all as read
+                        </Button>
+                      </div>
+                    )}
+                    <ul className="divide-y divide-border border rounded-lg">
+                      {notifications.map((n) => (
+                        <li
+                          key={n._id}
+                          className={`p-4 cursor-pointer transition-colors hover:bg-muted/50 ${
+                            !n.read ? "bg-blue-50/60 border-l-4 border-l-blue-500" : ""
+                          }`}
+                          onClick={() => { if (!n.read) void markNotifAsRead(n._id); }}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                                n.type === "appointment_approved" || n.type === "appointment_scheduled" ? "bg-green-100 text-green-600" :
+                                n.type === "appointment_rejected" ? "bg-red-100 text-red-600" :
+                                "bg-blue-100 text-blue-600"
+                              }`}>
+                                {n.type === "appointment_approved" || n.type === "appointment_scheduled" ? <CheckCircle2 className="w-4 h-4" /> :
+                                 n.type === "appointment_rejected" ? <XCircle className="w-4 h-4" /> :
+                                 <Bell className="w-4 h-4" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className={`text-sm font-semibold ${!n.read ? "text-foreground" : "text-muted-foreground"}`}>
+                                  {n.title}
+                                </p>
+                                <p className="text-sm text-muted-foreground whitespace-pre-line mt-1">{n.message}</p>
+                                <p className="text-xs text-muted-foreground/70 mt-2">
+                                  {new Date(n.createdAt).toLocaleString("en-GH", {
+                                    weekday: "short", year: "numeric", month: "short",
+                                    day: "numeric", hour: "2-digit", minute: "2-digit",
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+                            {!n.read && (
+                              <span className="shrink-0 w-2.5 h-2.5 rounded-full bg-blue-500 mt-2" />
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </CardContent>
             </Card>

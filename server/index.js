@@ -11,6 +11,7 @@ import paymentRoutes from "./routes/payments.js";
 import contactRouter from "./routes/contact.js";
 import testimonialsRouter from "./routes/testimonials.js";
 import adminRouter from "./routes/admin.js";
+import notificationRouter from "./routes/notifications.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(__dirname, "..");
@@ -86,6 +87,7 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/contact", contactRouter);
 app.use("/api/testimonials", testimonialsRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/notifications", notificationRouter);
 
 app.get("/api/health", (_req, res) => {
   const ready = mongoose.connection.readyState === 1;

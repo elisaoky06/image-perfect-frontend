@@ -182,10 +182,10 @@ router.post("/initiate", requireAuth("patient"), async (req, res) => {
       payment.transactionId = `MOCK_PAYSTACK_${Date.now()}`;
       await payment.save();
 
-      // Update appointment payment status and confirm appointment
+      // Update appointment payment status — but keep status as "pending" (admin must approve)
       appointment.paymentStatus = "paid";
       appointment.isPaid = true;
-      appointment.status = "confirmed"; // Payment confirms the appointment
+      // Do NOT change status to "confirmed" — admin must approve first
       appointment.paymentDetails = {
         ...(appointment.paymentDetails || {}),
         method: adminAccount?.method || appointment.paymentDetails?.method || "Mobile Money",
@@ -270,7 +270,7 @@ router.get("/verify/:reference", async (req, res) => {
       payment.transactionId = payment.transactionId || `MOCK_${Date.now()}`;
       await payment.save();
       await Appointment.findByIdAndUpdate(payment.appointment, {
-        paymentStatus: "paid", isPaid: true, status: "confirmed",
+        paymentStatus: "paid", isPaid: true,
       });
       // Send receipts (in case initiate didn't already — e.g. if verify is called standalone)
       await sendPaymentReceipts(payment._id, null);
@@ -291,7 +291,7 @@ router.get("/verify/:reference", async (req, res) => {
       await payment.save();
 
       await Appointment.findByIdAndUpdate(payment.appointment, {
-        paymentStatus: "paid", isPaid: true, status: "confirmed",
+        paymentStatus: "paid", isPaid: true,
       });
 
       // ✅ Send receipt to BOTH patient and doctor after real Paystack success
@@ -326,7 +326,7 @@ router.post("/webhook", async (req, res) => {
           payment.rawResponse = payload;
           await payment.save();
           await Appointment.findByIdAndUpdate(payment.appointment, {
-            paymentStatus: "paid", isPaid: true, status: "confirmed",
+            paymentStatus: "paid", isPaid: true,
           });
           // ✅ Send receipts via webhook too
           const adminAccount = payment.adminAccount

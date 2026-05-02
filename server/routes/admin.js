@@ -7,6 +7,7 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { Payment } from "../models/Payment.js";
 import { AdminPaymentAccount } from "../models/AdminPaymentAccount.js";
 import { sendMockEmail } from "../utils/email.js";
+import { Notification } from "../models/Notification.js";
 
 const router = Router();
 
@@ -52,6 +53,32 @@ router.patch("/appointments/:id/approve", async (req, res) => {
     await appt.save();
 
     const receiptNo = `RCP-${appt._id.toString().slice(-8).toUpperCase()}`;
+
+    // ── Create in-app notifications for patient and doctor ─────────────────
+    try {
+      const apptDateStr = new Date(appt.startAt).toLocaleString("en-GH", {
+        weekday: "long", year: "numeric", month: "long",
+        day: "numeric", hour: "2-digit", minute: "2-digit",
+      });
+
+      await Notification.create({
+        recipient: appt.patient._id,
+        type: "appointment_approved",
+        title: "Appointment Approved ✅",
+        message: `Your appointment with Dr. ${appt.doctor?.firstName} ${appt.doctor?.lastName} on ${apptDateStr} has been approved and is now scheduled.\n\nConsultation Type: ${appt.consultationType || "In-Person"}\nAmount Paid: GHS ${Number(appt.amount || 0).toFixed(2)}\nReceipt No: ${receiptNo}\n\nPlease arrive 10 minutes early. Bring a valid ID and any prior medical records.`,
+        appointment: appt._id,
+      });
+
+      await Notification.create({
+        recipient: appt.doctor._id,
+        type: "appointment_scheduled",
+        title: "New Scheduled Appointment 🗓️",
+        message: `An appointment with ${appt.patient?.firstName} ${appt.patient?.lastName} on ${apptDateStr} has been approved by the administrator.\n\nConsultation Type: ${appt.consultationType || "In-Person"}\nReason: ${appt.reason || "Not provided"}\nAmount: GHS ${Number(appt.amount || 0).toFixed(2)}\n\nLog in to your dashboard to view full details.`,
+        appointment: appt._id,
+      });
+    } catch (notifErr) {
+      console.error("[admin/approve] Notification creation error:", notifErr?.message);
+    }
 
     // ── 2. Send HTTP response immediately — do NOT block on emails ───────────
     res.json({ ok: true, receiptNo, previewUrl: null });
@@ -152,7 +179,7 @@ router.patch("/appointments/:id/reject", async (req, res) => {
       .populate("patient", "firstName lastName email");
     if (!appt) return res.status(404).json({ error: "Appointment not found" });
 
-    appt.status = "cancelled";
+    appt.status = "rejected";
     await appt.save();
 
     // Free the slot
@@ -161,6 +188,23 @@ router.patch("/appointments/:id/reject", async (req, res) => {
 
     // ── Respond immediately, email in background ─────────────────────────────
     res.json({ ok: true });
+
+    // ── Create in-app notification for patient ──────────────────────────────
+    try {
+      const apptDateStr = new Date(appt.startAt).toLocaleString("en-GH", {
+        weekday: "long", year: "numeric", month: "long",
+        day: "numeric", hour: "2-digit", minute: "2-digit",
+      });
+      await Notification.create({
+        recipient: appt.patient._id,
+        type: "appointment_rejected",
+        title: "Appointment Rejected ❌",
+        message: `Unfortunately, your appointment with Dr. ${appt.doctor?.firstName} ${appt.doctor?.lastName} on ${apptDateStr} has been rejected by the administrator.\n\nPlease contact us or book a new appointment if you believe this is an error.`,
+        appointment: appt._id,
+      });
+    } catch (notifErr) {
+      console.error("[admin/reject] Notification creation error:", notifErr?.message);
+    }
 
     if (appt.patient?.email) {
       const html = `

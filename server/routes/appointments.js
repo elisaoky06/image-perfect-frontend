@@ -87,8 +87,8 @@ router.get("/mine", requireAuth(["patient", "doctor"]), async (req, res) => {
       ? { patient: req.user._id }
       : { doctor: req.user._id };
     const allowedStatuses = req.user.role === "patient"
-      ? ["pending", "confirmed", "in_progress", "done"]
-      : ["confirmed", "in_progress", "done"]; // Doctors only see confirmed and later
+      ? ["pending", "confirmed", "scheduled", "in_progress", "done"]
+      : ["pending", "confirmed", "scheduled", "in_progress", "done"]; // Doctors see pending onwards
     const list = await Appointment.find({ ...q, status: { $in: allowedStatuses } })
       .sort({ startAt: 1 })
       .populate("doctor", "firstName lastName email phone doctorProfile")
@@ -109,7 +109,7 @@ router.patch("/:id/start", requireAuth("doctor"), async (req, res) => {
     const appt = await Appointment.findById(id);
     if (!appt) return res.status(404).json({ error: "Appointment not found" });
     if (!appt.doctor.equals(req.user._id)) return res.status(403).json({ error: "Not allowed" });
-    if (appt.status !== "confirmed") return res.status(400).json({ error: "Appointment is not confirmed" });
+    if (appt.status !== "confirmed" && appt.status !== "scheduled") return res.status(400).json({ error: "Appointment is not confirmed/scheduled" });
     appt.status = "in_progress";
     await appt.save();
     return res.json({ ok: true });
