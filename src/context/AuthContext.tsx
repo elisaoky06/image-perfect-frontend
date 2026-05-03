@@ -25,8 +25,14 @@ export type PublicUser = {
     languagesSpoken?: string[];
     consultationFee?: number;
     hospitalBranch?: string;
-    weeklyAvailability?: { day: number; segments: { start: string; end: string }[] }[];
-    monthlyAvailability?: { date: string; segments: { start: string; end: string }[] }[];
+    weeklyAvailability?: {
+      day: number;
+      segments: { start: string; end: string }[];
+    }[];
+    monthlyAvailability?: {
+      date: string;
+      segments: { start: string; end: string }[];
+    }[];
   };
   patientProfile?: {
     medicalHistoryUploaded?: boolean;
@@ -45,16 +51,25 @@ type AuthContextValue = {
   refreshUser: () => Promise<void>;
 };
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<PublicUser | null>(null);
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("token"));
-  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem("token")));
+  const [token, setToken] = useState<string | null>(() =>
+    localStorage.getItem("token")
+  );
+  const [loading, setLoading] = useState(() =>
+    Boolean(localStorage.getItem("token"))
+  );
 
   const refreshUser = useCallback(async () => {
     const t = localStorage.getItem("token");
-    if (!t) { setUser(null); setLoading(false); return; }
+    if (!t) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       const data = await api<{ user: PublicUser }>("/api/auth/me");
       setUser(data.user);
@@ -67,47 +82,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => { void refreshUser(); }, [token, refreshUser]);
+  useEffect(() => {
+    void refreshUser();
+  }, [token, refreshUser]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const data = await api<{ token: string; user: PublicUser }>("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
+    const data = await api<{ token: string; user: PublicUser }>(
+      "/api/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      }
+    );
+
     localStorage.setItem("token", data.token);
     setToken(data.token);
     setUser(data.user);
   }, []);
 
-  const register = useCallback(async (payload: FormData | Record<string, unknown>) => {
-    const base = getApiBase();
-    const registerUrl = `${base}/api/auth/register`;
-    const headers: Record<string, string> = {};
-    if (!(payload instanceof FormData)) {
-      headers["Content-Type"] = "application/json";
-    }
-    const res = await fetch(registerUrl, {
-      method: "POST",
-      headers,
-      body: payload instanceof FormData ? payload : JSON.stringify(payload),
-    });
-    const text = await res.text();
-    let data: { token?: string; user?: PublicUser; error?: string; errorName?: string } | null = null;
-    if (text) {
-      try { data = JSON.parse(text) as typeof data; } catch { data = null; }
-    }
-    if (!res.ok) {
-      if (!data && text?.trim().startsWith("<")) {
-        throw new Error("Server returned an HTML page instead of JSON. Check Vercel logs.");
+  const register = useCallback(
+    async (payload: FormData | Record<string, unknown>) => {
+      const base = getApiBase();
+      const registerUrl = `${base}/api/auth/register`;
+
+      const headers: Record<string, string> = {};
+      if (!(payload instanceof FormData)) {
+        headers["Content-Type"] = "application/json";
       }
-      const msg = data?.error
-        ? data.errorName ? `${data.error} (${data.errorName})` : data.error
-        : text || res.statusText || "Registration failed";
-      throw new Error(msg);
-    }
-    if (!data?.user) throw new Error("Invalid response from server");
-    // Do NOT auto-login — user must sign in manually after registration
-  }, []);
+
+      const res = await fetch(registerUrl, {
+        method: "POST",
+        headers,
+        body: payload instanceof FormData ? payload : JSON.stringify(payload),
+      });
+
+      const text = await res.text();
+
+      let data: {
+        token?: string;
+        user?: PublicUser;
+        error?: string;
+        errorName?: string;
+      } | null = null;
+
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = null;
+        }
+      }
+
+      if (!res.ok) {
+        if (!data && text?.trim().startsWith("<")) {
+          throw new Error("Server returned an HTML page instead of JSON. Check Vercel logs.");
+        }
+
+        const msg = data?.error
+          ? data.errorName
+            ? `${data.error} (${data.errorName})`
+            : data.error
+          : text || res.statusText || "Registration failed";
+
+        throw new Error(msg);
+      }
+
+      if (!data?.user) {
+        throw new Error("Invalid response from server");
+      }
+    },
+    []
+  );
 
   const logout = useCallback(() => {
     localStorage.removeItem("token");
@@ -116,15 +161,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, token, loading, login, register, logout, refreshUser }),
-    [user, token, loading, login, register, logout, refreshUser],
+    () => ({
+      user,
+      token,
+      loading,
+      login,
+      register,
+      logout,
+      refreshUser,
+    }),
+    [user, token, loading, login, register, logout, refreshUser]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+
+  if (!ctx) {
+    throw new Error("useAuth must be used within AuthProvider");
+  }
+
   return ctx;
 }

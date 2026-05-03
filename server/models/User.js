@@ -5,14 +5,20 @@ const doctorProfileSchema = new mongoose.Schema(
     profilePicture: {
       originalName: { type: String, default: "" },
       storedFilename: { type: String, default: "" },
-      /** Base64-encoded image data (stored in MongoDB for serverless compatibility) */
       data: { type: String, default: "" },
       mimeType: { type: String, default: "" },
     },
-    specialty: { 
-      type: String, 
-      enum: ["Cardiology", "Neurology", "Ophthalmology", "General Medicine", "Orthopedics", "Pediatrics"],
-      default: "General Medicine"
+    specialty: {
+      type: String,
+      enum: [
+        "Cardiology",
+        "Neurology",
+        "Ophthalmology",
+        "General Medicine",
+        "Orthopedics",
+        "Pediatrics",
+      ],
+      default: "General Medicine",
     },
     bio: { type: String, default: "" },
     qualification: { type: String, default: "" },
@@ -24,7 +30,7 @@ const doctorProfileSchema = new mongoose.Schema(
     rating: { type: Number, default: 0 },
     monthlyAvailability: { type: [mongoose.Schema.Types.Mixed], default: [] },
   },
-  { _id: false },
+  { _id: false }
 );
 
 const patientProfileSchema = new mongoose.Schema(
@@ -33,44 +39,75 @@ const patientProfileSchema = new mongoose.Schema(
       originalName: { type: String, default: "" },
       storedFilename: { type: String, default: "" },
       uploadedAt: { type: Date },
-      /** Base64-encoded PDF data (stored in MongoDB for serverless compatibility) */
       data: { type: String, default: "" },
     },
   },
-  { _id: false },
+  { _id: false }
 );
 
 const userSchema = new mongoose.Schema(
   {
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
     passwordHash: { type: String, required: true },
-    role: { type: String, enum: ["patient", "doctor", "admin"], required: true },
+    role: {
+      type: String,
+      enum: ["patient", "doctor", "admin"],
+      required: true,
+    },
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
     phone: { type: String, default: "", trim: true },
+
     doctorProfile: { type: doctorProfileSchema, default: undefined },
     patientProfile: { type: patientProfileSchema, default: undefined },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
-userSchema.methods.toPublicJSON = function toPublicJSON() {
+userSchema.methods.toPublicJSON = function () {
   const o = this.toObject({ versionKey: false });
+
   delete o.passwordHash;
-  // Never expose raw base64 file data in API responses
-  if (o.patientProfile?.medicalHistoryPdf) {
+
+  if (o.doctorProfile) {
+    o.doctorProfile = {
+      specialty: o.doctorProfile.specialty || "",
+      bio: o.doctorProfile.bio || "",
+      qualification: o.doctorProfile.qualification || "",
+      yearsOfExperience: o.doctorProfile.yearsOfExperience || 0,
+      licenseNumber: o.doctorProfile.licenseNumber || "",
+      languagesSpoken: o.doctorProfile.languagesSpoken || [],
+      consultationFee: o.doctorProfile.consultationFee || 0,
+      hospitalBranch: o.doctorProfile.hospitalBranch || "",
+      rating: o.doctorProfile.rating || 0,
+      monthlyAvailability: o.doctorProfile.monthlyAvailability || [],
+      profilePicture: o.doctorProfile.profilePicture
+        ? {
+          originalName: o.doctorProfile.profilePicture.originalName || "",
+          storedFilename: o.doctorProfile.profilePicture.storedFilename || "",
+          mimeType: o.doctorProfile.profilePicture.mimeType || "",
+        }
+        : undefined,
+    };
+  }
+
+  if (o.patientProfile) {
     o.patientProfile = {
       medicalHistoryUploaded: Boolean(
-        o.patientProfile.medicalHistoryPdf.storedFilename ||
-        o.patientProfile.medicalHistoryPdf.data
+        o.patientProfile.medicalHistoryPdf?.storedFilename ||
+        o.patientProfile.medicalHistoryPdf?.data
       ),
     };
   }
-  if (o.doctorProfile?.profilePicture?.data) {
-    // Only expose metadata, not the raw base64 blob
-    delete o.doctorProfile.profilePicture.data;
-  }
+
   return o;
 };
 
-export const User = mongoose.models.User || mongoose.model("User", userSchema);
+export const User =
+  mongoose.models.User || mongoose.model("User", userSchema);

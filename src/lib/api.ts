@@ -13,12 +13,6 @@ function isRfc1918IPv4(hostname: string): boolean {
   return false;
 }
 
-/**
- * Base URL for API requests.
- * - `VITE_API_URL` in `.env` wins when set.
- * - On localhost / 127.0.0.1 / LAN IPs, directs to local API server on port 5000.
- * - On production (Vercel etc.) uses relative paths so /api/* routes hit the serverless function.
- */
 export function getApiBase(): string {
   const trimmed = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
 
@@ -26,9 +20,11 @@ export function getApiBase(): string {
 
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
+
     if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") {
       return `http://127.0.0.1:${localApiPort()}`;
     }
+
     if (isRfc1918IPv4(host)) {
       return `http://${host}:${localApiPort()}`;
     }
@@ -38,7 +34,6 @@ export function getApiBase(): string {
     return `http://127.0.0.1:${localApiPort()}`;
   }
 
-  // Production: use relative URLs so Vercel rewrites handle /api/*
   return "";
 }
 
@@ -47,25 +42,44 @@ export type ApiErrorBody = { error?: string };
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const base = getApiBase();
   const headers = new Headers(init.headers);
-  const body = init.body;
-  if (body && !headers.has("Content-Type") && !(typeof FormData !== "undefined" && body instanceof FormData)) {
-    headers.set("Content-Type", "application/json");
-  }
+
   const token = localStorage.getItem("token");
-  if (token) {
+
+  if (token && token !== "undefined" && token !== "null") {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(`${base}${path}`, { ...init, headers });
+  const body = init.body;
+
+  if (
+    body &&
+    !headers.has("Content-Type") &&
+    !(typeof FormData !== "undefined" && body instanceof FormData)
+  ) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const res = await fetch(`${base}${path}`, {
+    ...init,
+    headers,
+  });
 
   const text = await res.text();
-  let data: unknown = null;
-  if (text) {
-    try { data = JSON.parse(text); } catch { data = null; }
+
+  let data: any = null;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
   }
 
   if (!res.ok) {
-    const msg = (data as ApiErrorBody)?.error || res.statusText || "Request failed";
+    if (res.status === 401) {
+      localStorage.removeItem("token");
+    }
+
+    const msg = data?.error || res.statusText || "Request failed";
     throw new Error(msg);
   }
 
