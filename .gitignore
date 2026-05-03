@@ -4,3 +4,5 @@ dist
 uploads/**/*.pdf
 *.local
 .DS_Store
+
+.vercel

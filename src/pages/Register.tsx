@@ -73,10 +73,10 @@ const Register = () => {
         fd.append("specialty", specialty.trim());
         fd.append("bio", bio.trim());
         if (profilePicture) {
-          fd.append("profilePicture", profilePicture);
+          //fd.append("profilePicture", profilePicture);
         }
       } else if (role === "patient" && medicalHistoryPdf) {
-        fd.append("medicalHistoryPdf", medicalHistoryPdf);
+        //fd.append("medicalHistoryPdf", medicalHistoryPdf);
       }
 
       await register(fd);
