@@ -23,7 +23,7 @@ const doctorProfileSchema = new mongoose.Schema(
     bio: { type: String, default: "" },
     qualification: { type: String, default: "" },
     yearsOfExperience: { type: Number, default: 0 },
-    licenseNumber: { type: String, default: "", unique: true, sparse: true },
+    licenseNumber: { type: String, unique: true, sparse: true },
     languagesSpoken: { type: [String], default: [] },
     consultationFee: { type: Number, default: 0 },
     hospitalBranch: { type: String, default: "" },

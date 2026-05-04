@@ -157,7 +157,11 @@ router.post("/register", (req, res, next) => {
     if (e?.stack && !isProduction) console.error(e.stack);
     if (res.headersSent) return next(e);
     if (e?.code === 11000 || String(e?.code) === "11000") {
-      return res.status(409).json({ error: "An account with this email already exists" });
+      const field = Object.keys(e.keyPattern || {}).join(", ");
+      const msg = field.includes("email") 
+        ? "An account with this email already exists" 
+        : `Duplicate value for: ${field}`;
+      return res.status(409).json({ error: msg });
     }
     if (e?.name === "ValidationError") {
       const msgs = Object.values(e.errors || {}).map((x) => x.message);
