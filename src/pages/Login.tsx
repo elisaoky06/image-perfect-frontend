@@ -29,15 +29,15 @@ const Login = () => {
       // Determine where to redirect based on the user's role
       // We fetch /me right after login to get the up-to-date role
       let dest = searchParams.get("redirect") || null;
-      if (!dest) {
-        try {
-          const { user } = await api<{ user: PublicUser }>("/api/auth/me");
-          if (user.role === "admin") dest = "/admin";
-          else if (user.role === "doctor") dest = "/doctor";
-          else dest = "/appointments";
-        } catch {
-          dest = "/";
-        }
+      try {
+        const { user } = await api<{ user: PublicUser }>("/api/auth/me");
+        // Staff should always go to their dashboards
+        if (user.role === "admin") dest = "/admin";
+        else if (user.role === "doctor") dest = "/doctor";
+        // Patients follow the redirect if it exists, otherwise go to appointments
+        else if (!dest) dest = "/appointments";
+      } catch {
+        if (!dest) dest = "/";
       }
       navigate(dest, { replace: true });
     } catch (err) {

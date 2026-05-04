@@ -358,20 +358,25 @@ const BookAppointment = () => {
   }
 
   if (user.role !== "patient") {
+    const isDoctor = user.role === "doctor";
     return (
       <SiteLayout>
         <div className="section-padding">
           <div className="container-wide max-w-lg mx-auto">
             <Card>
               <CardHeader>
-                <CardTitle className="font-heading">Doctor account</CardTitle>
+                <CardTitle className="font-heading">{isDoctor ? "Doctor account" : "Admin account"}</CardTitle>
                 <CardDescription>
-                  Appointment booking is for patients. Use your portal to set availability and view visits.
+                  {isDoctor 
+                    ? "Appointment booking is for patients. Use your portal to set availability and view visits."
+                    : "Appointment booking is for patients. Use the admin portal to manage the system."}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
-                  <Link to="/doctor">Open doctor portal</Link>
+                  <Link to={isDoctor ? "/doctor" : "/admin"}>
+                    Open {isDoctor ? "doctor" : "admin"} portal
+                  </Link>
                 </Button>
               </CardContent>
             </Card>
